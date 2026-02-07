@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Application Tracker</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎯 Application Tracker</h1>
+            <div class="header-actions">
+                <button id="refreshBtn" class="btn btn-primary">
+                    <span class="btn-icon">🔄</span> Refresh
+                </button>
+            </div>
+        </header>
+
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card stat-total">
+                <span class="stat-value" id="statTotal">-</span>
+                <span class="stat-label">Total</span>
+            </div>
+            <div class="stat-card stat-applied">
+                <span class="stat-value" id="statApplied">-</span>
+                <span class="stat-label">Applied</span>
+            </div>
+            <div class="stat-card stat-assessment">
+                <span class="stat-value" id="statAssessment">-</span>
+                <span class="stat-label">Assessment</span>
+            </div>
+            <div class="stat-card stat-interview">
+                <span class="stat-value" id="statInterview">-</span>
+                <span class="stat-label">Interview</span>
+            </div>
+            <div class="stat-card stat-rejected">
+                <span class="stat-value" id="statRejected">-</span>
+                <span class="stat-label">Rejected</span>
+            </div>
+        </div>
+
+        <div class="filters">
+            <input type="text" id="searchInput" placeholder="🔍 Search company or role..." class="search-input">
+            <select id="statusFilter" class="status-filter">
+                <option value="">All Statuses</option>
+                <option value="Applied">Applied</option>
+                <option value="Assessment">Assessment</option>
+                <option value="Interview">Interview</option>
+                <option value="Rejected">Rejected</option>
+            </select>
+        </div>
+
+        <div class="table-container">
+            <table id="applicationsTable">
+                <thead>
+                    <tr>
+                        <th>Company</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Applied Date</th>
+                        <th>Last Updated</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr><td colspan="5" class="loading">Loading applications...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <footer>
+            <p>Last refreshed: <span id="lastRefresh">Never</span></p>
+            <p>Auto-refresh every 60 seconds</p>
+        </footer>
+    </div>
+
+    <script>
+        let allApplications = [];
+
+        async function fetchApplications() {
+            try {
+                const response = await fetch('/api/applications');
+                allApplications = await response.json();
+                renderTable(allApplications);
+                document.getElementById('lastRefresh').textContent = new Date().toLocaleTimeString();
+            } catch (error) {
+                console.error('Error fetching applications:', error);
+            }
+        }
+
+        async function fetchStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const stats = await response.json();
+                document.getElementById('statTotal').textContent = stats.total || 0;
+                document.getElementById('statApplied').textContent = stats.Applied || 0;
+                document.getElementById('statAssessment').textContent = stats.Assessment || 0;
+                document.getElementById('statInterview').textContent = stats.Interview || 0;
+                document.getElementById('statRejected').textContent = stats.Rejected || 0;
+            } catch (error) {
+                console.error('Error fetching stats:', error);
+            }
+        }
+
+        function renderTable(applications) {
+            const tbody = document.getElementById('tableBody');
+            
+            if (applications.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty">No applications found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = applications.map(app => `
+                <tr>
+                    <td class="company">${escapeHtml(app.company || '')}</td>
+                    <td class="role">${escapeHtml(app.role || '')}</td>
+                    <td><span class="status-badge status-${(app.status || '').toLowerCase()}">${escapeHtml(app.status || '')}</span></td>
+                    <td>${escapeHtml(app.applied_date || '')}</td>
+                    <td>${escapeHtml(app.last_updated || '')}</td>
+                </tr>
+            `).join('');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function filterApplications() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const statusFilter = document.getElementById('statusFilter').value;
+
+            const filtered = allApplications.filter(app => {
+                const matchesSearch = !search || 
+                    (app.company || '').toLowerCase().includes(search) ||
+                    (app.role || '').toLowerCase().includes(search);
+                const matchesStatus = !statusFilter || app.status === statusFilter;
+                return matchesSearch && matchesStatus;
+            });
+
+            renderTable(filtered);
+        }
+
+        async function manualRefresh() {
+            const btn = document.getElementById('refreshBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="btn-icon">⏳</span> Refreshing...';
+
+            try {
+                await fetch('/api/refresh');
+                await fetchApplications();
+                await fetchStats();
+            } catch (error) {
+                console.error('Refresh error:', error);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<span class="btn-icon">🔄</span> Refresh';
+            }
+        }
+
+        // Event listeners
+        document.getElementById('searchInput').addEventListener('input', filterApplications);
+        document.getElementById('statusFilter').addEventListener('change', filterApplications);
+        document.getElementById('refreshBtn').addEventListener('click', manualRefresh);
+
+        // Initial load
+        fetchApplications();
+        fetchStats();
+
+        // Auto-refresh every 60 seconds
+        setInterval(() => {
+            fetchApplications();
+            fetchStats();
+        }, 60000);
+    </script>
+</body>
+</html>
