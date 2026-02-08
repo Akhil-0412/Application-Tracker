@@ -136,7 +136,33 @@ def api_applications():
             {"company": "Demo Company", "role": "Software Engineer", "status": "Applied", "applied_date": "2026-02-07", "last_updated": "2026-02-07 12:00"}
         ])
     
-    return jsonify(applications)
+    # 1. Filter out "Unknown" applications (noise reduction)
+    filtered_applications = []
+    for app in applications:
+        company = app.get("company", "").lower()
+        role = app.get("role", "").lower()
+        
+        # Skip if both company and role are unknown/generic
+        if (company in ["unknown", "unknown company", ""] and 
+            role in ["unknown", "unknown position", "", "unspecified"]):
+            continue
+            
+        filtered_applications.append(app)
+    
+    # 2. Sort by applied_date (descending)
+    def parse_date(date_str):
+        if not date_str: return datetime.min
+        try:
+            return datetime.strptime(date_str, "%Y-%m-%d")
+        except:
+            return datetime.min
+
+    filtered_applications.sort(
+        key=lambda x: parse_date(x.get("applied_date", "")), 
+        reverse=True
+    )
+    
+    return jsonify(filtered_applications)
 
 
 @app.route("/api/stats")

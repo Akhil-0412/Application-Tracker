@@ -110,6 +110,19 @@ class PhraseClassifier:
         # Extract role
         role = self._extract_role(subject, body)
 
+        # STRICTER LOGIC:
+        # If Company is "Unknown" AND Role is "Unknown", downgrade confidence
+        if not company and not role:
+            confidence = 0.0
+            reasoning = "Failed to extract Company or Role"
+            status = "Applied" # Reset to default if we can't identify what it is
+        
+        # If we have a status match but no company/role, it might still be valid (e.g. "Status update"),
+        # but if we have NO status match and NO company/role, it's definitely junk.
+        if confidence < 0.6 and (not company or not role):
+             confidence = 0.0
+             reasoning = "Low confidence and missing metadata"
+
         return ClassificationResult(
             company=company or "Unknown Company",
             role=role or "Unknown Position",
@@ -141,7 +154,12 @@ class PhraseClassifier:
             # ATS Platforms and Noise
             "applytojob", "myworkday", "workday", "successfactors", "avature",
             "icims", "jobvite", "smartrecruiters", "breezy", "ashby", "via",
-            "e", "fivesurveys", "growthassistant", "targetjobs", "getintoteaching"
+            "e", "fivesurveys", "growthassistant", "targetjobs", "getintoteaching",
+            "verify", "security", "code", "password", "login", "account",
+            "welcome", "confirm", "receipt", "order", "invoice", "payment",
+            "subscription", "newsletter", "digest", "update", "alert",
+            "notification", "support", "help", "contact", "info", "admin",
+            "noreply", "no-reply", "mailer", "service", "system", "auto"
         ]
 
         for pattern in patterns:
