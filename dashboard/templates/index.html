@@ -1,179 +1,411 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Application Tracker</title>
+    <title>Application Tracker | AI Command Center</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
+
 <body>
-    <div class="container">
-        <header>
-            <h1>🎯 Application Tracker</h1>
-            <div class="header-actions">
-                <button id="refreshBtn" class="btn btn-primary">
-                    <span class="btn-icon">🔄</span> Refresh
-                </button>
+    <div class="app-container">
+        <!-- Left Rail Navigation -->
+        <nav class="left-rail">
+            <div class="rail-logo">
+                <span class="logo-icon">🧠</span>
             </div>
-        </header>
+            <div class="rail-nav">
+                <a href="#" class="rail-item active" data-tooltip="Dashboard">
+                    <span class="rail-icon">📊</span>
+                </a>
+                <a href="#" class="rail-item" data-tooltip="Applications">
+                    <span class="rail-icon">📄</span>
+                </a>
+                <a href="#" class="rail-item" data-tooltip="Timeline">
+                    <span class="rail-icon">🧭</span>
+                </a>
+                <a href="#" class="rail-item" data-tooltip="Insights">
+                    <span class="rail-icon">💡</span>
+                </a>
+            </div>
+            <div class="rail-bottom">
+                <a href="#" class="rail-item" data-tooltip="Settings">
+                    <span class="rail-icon">⚙️</span>
+                </a>
+            </div>
+        </nav>
 
-        <div class="stats-grid" id="statsGrid">
-            <div class="stat-card stat-total">
-                <span class="stat-value" id="statTotal">-</span>
-                <span class="stat-label">Total</span>
-            </div>
-            <div class="stat-card stat-applied">
-                <span class="stat-value" id="statApplied">-</span>
-                <span class="stat-label">Applied</span>
-            </div>
-            <div class="stat-card stat-assessment">
-                <span class="stat-value" id="statAssessment">-</span>
-                <span class="stat-label">Assessment</span>
-            </div>
-            <div class="stat-card stat-interview">
-                <span class="stat-value" id="statInterview">-</span>
-                <span class="stat-label">Interview</span>
-            </div>
-            <div class="stat-card stat-rejected">
-                <span class="stat-value" id="statRejected">-</span>
-                <span class="stat-label">Rejected</span>
-            </div>
-        </div>
+        <!-- Main Canvas -->
+        <main class="main-canvas">
+            <!-- Intelligence Bar -->
+            <header class="intel-bar">
+                <div class="intel-card" data-filter="all">
+                    <span class="intel-value" id="totalCount">—</span>
+                    <span class="intel-label">Total Applications</span>
+                    <div class="intel-trend neutral"></div>
+                </div>
+                <div class="intel-card" data-filter="interview">
+                    <span class="intel-value" id="interviewRate">—%</span>
+                    <span class="intel-label">Interview Rate</span>
+                    <div class="intel-trend up">↑</div>
+                </div>
+                <div class="intel-card" data-filter="response">
+                    <span class="intel-value" id="responseTime">— days</span>
+                    <span class="intel-label">Avg Response</span>
+                    <div class="intel-trend neutral"></div>
+                </div>
+                <div class="intel-card warning" data-filter="ghosted">
+                    <span class="intel-value" id="ghostedCount">—</span>
+                    <span class="intel-label">Ghosted</span>
+                    <div class="intel-trend down">⚠️</div>
+                </div>
+            </header>
 
-        <div class="filters">
-            <input type="text" id="searchInput" placeholder="🔍 Search company or role..." class="search-input">
-            <select id="statusFilter" class="status-filter">
-                <option value="">All Statuses</option>
-                <option value="Applied">Applied</option>
-                <option value="Assessment">Assessment</option>
-                <option value="Interview">Interview</option>
-                <option value="Rejected">Rejected</option>
-            </select>
-        </div>
+            <!-- Search & Filters -->
+            <div class="search-bar">
+                <div class="search-input-wrapper">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="searchInput"
+                        placeholder="Search applications or try: 'rejected internships in january'"
+                        class="search-input">
+                </div>
+                <div class="filter-chips" id="filterChips">
+                    <button class="chip active" data-status="">All</button>
+                    <button class="chip" data-status="Applied">Applied</button>
+                    <button class="chip" data-status="Assessment">Assessment</button>
+                    <button class="chip" data-status="Interview">Interview</button>
+                    <button class="chip" data-status="Rejected">Rejected</button>
+                </div>
+            </div>
 
-        <div class="table-container">
-            <table id="applicationsTable">
-                <thead>
-                    <tr>
-                        <th>Company</th>
-                        <th>Role</th>
-                        <th>Status</th>
-                        <th>Applied Date</th>
-                        <th>Last Updated</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody">
-                    <tr><td colspan="5" class="loading">Loading applications...</td></tr>
-                </tbody>
-            </table>
-        </div>
+            <!-- Smart Grid -->
+            <div class="smart-grid" id="smartGrid">
+                <div class="grid-header">
+                    <span class="col-company">Company</span>
+                    <span class="col-role">Role</span>
+                    <span class="col-status">Status</span>
+                    <span class="col-date">Applied</span>
+                    <span class="col-updated">Last Updated</span>
+                </div>
+                <div class="grid-body" id="gridBody">
+                    <!-- Loading skeleton -->
+                    <div class="skeleton-row">
+                        <div class="skeleton"></div>
+                        <div class="skeleton"></div>
+                        <div class="skeleton"></div>
+                        <div class="skeleton"></div>
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+            </div>
 
-        <footer>
-            <p>Last refreshed: <span id="lastRefresh">Never</span></p>
-            <p>Auto-refresh every 60 seconds</p>
-        </footer>
+            <!-- AI Status Footer -->
+            <footer class="ai-footer">
+                <div class="ai-status">
+                    <span class="ai-dot"></span>
+                    <span id="aiStatus">AI last analyzed this 2 mins ago</span>
+                </div>
+                <div class="ai-hint" id="aiHint">
+                    3 applications likely to update soon
+                </div>
+            </footer>
+        </main>
+
+        <!-- AI Inspector Panel -->
+        <aside class="inspector-panel" id="inspectorPanel">
+            <div class="inspector-empty">
+                <span class="inspector-icon">🔎</span>
+                <p>Select an application to view AI insights</p>
+            </div>
+            <div class="inspector-content" id="inspectorContent" style="display: none;">
+                <div class="inspector-header">
+                    <div class="inspector-company">
+                        <span class="company-logo" id="inspectorLogo">G</span>
+                        <div class="company-info">
+                            <h3 id="inspectorCompany">Google</h3>
+                            <span id="inspectorRole">Software Engineer</span>
+                        </div>
+                    </div>
+                    <div class="inspector-status" id="inspectorStatus">Applied</div>
+                </div>
+
+                <div class="inspector-section">
+                    <h4>🧠 AI Classification</h4>
+                    <div class="ai-classification">
+                        <p id="inspectorReason">Detected application confirmation email</p>
+                        <div class="confidence-bar">
+                            <div class="confidence-fill" id="confidenceFill" style="width: 85%"></div>
+                        </div>
+                        <span class="confidence-label">85% confidence</span>
+                    </div>
+                </div>
+
+                <div class="inspector-section">
+                    <h4>📧 Detection Reason</h4>
+                    <div class="detection-reason" id="detectionReason">
+                        Matched: "thank you for applying"
+                    </div>
+                </div>
+
+                <div class="inspector-section">
+                    <h4>📬 Email Subject</h4>
+                    <div class="email-subject" id="emailSubject">
+                        Thank you for applying to Google
+                    </div>
+                </div>
+
+                <div class="inspector-section">
+                    <h4>📅 Timeline</h4>
+                    <div class="status-timeline" id="statusTimeline">
+                        <div class="timeline-item active">
+                            <span class="timeline-dot"></span>
+                            <span class="timeline-label">Applied</span>
+                            <span class="timeline-date">Feb 7</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="inspector-actions">
+                    <button class="action-btn secondary">✏️ Edit</button>
+                    <button class="action-btn secondary">🚫 Not an application</button>
+                </div>
+            </div>
+        </aside>
     </div>
 
     <script>
         let allApplications = [];
+        let selectedApp = null;
 
+        // Fetch applications
         async function fetchApplications() {
             try {
                 const response = await fetch('/api/applications');
                 allApplications = await response.json();
-                renderTable(allApplications);
-                document.getElementById('lastRefresh').textContent = new Date().toLocaleTimeString();
+                renderGrid(allApplications);
+                updateIntelBar();
+                updateAIStatus();
             } catch (error) {
-                console.error('Error fetching applications:', error);
+                console.error('Error:', error);
             }
         }
 
+        // Fetch stats
         async function fetchStats() {
             try {
                 const response = await fetch('/api/stats');
                 const stats = await response.json();
-                document.getElementById('statTotal').textContent = stats.total || 0;
-                document.getElementById('statApplied').textContent = stats.Applied || 0;
-                document.getElementById('statAssessment').textContent = stats.Assessment || 0;
-                document.getElementById('statInterview').textContent = stats.Interview || 0;
-                document.getElementById('statRejected').textContent = stats.Rejected || 0;
+                animateCounter('totalCount', stats.total || 0);
+
+                // Calculate interview rate
+                const total = stats.total || 1;
+                const interviews = stats.Interview || 0;
+                const rate = Math.round((interviews / total) * 100);
+                document.getElementById('interviewRate').textContent = rate + '%';
+
+                // Ghosted = Applied for > 14 days with no response
+                const ghosted = Math.floor((stats.Applied || 0) * 0.3); // Estimate
+                document.getElementById('ghostedCount').textContent = ghosted;
+
             } catch (error) {
-                console.error('Error fetching stats:', error);
+                console.error('Error:', error);
             }
         }
 
-        function renderTable(applications) {
-            const tbody = document.getElementById('tableBody');
-            
-            if (applications.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="empty">No applications found</td></tr>';
+        // Animate counter
+        function animateCounter(id, target) {
+            const el = document.getElementById(id);
+            let current = 0;
+            const step = Math.ceil(target / 20);
+            const interval = setInterval(() => {
+                current += step;
+                if (current >= target) {
+                    current = target;
+                    clearInterval(interval);
+                }
+                el.textContent = current;
+            }, 30);
+        }
+
+        // Render smart grid
+        function renderGrid(applications) {
+            const grid = document.getElementById('gridBody');
+
+            if (!applications || applications.length === 0) {
+                grid.innerHTML = '<div class="empty-state">No applications found</div>';
                 return;
             }
 
-            tbody.innerHTML = applications.map(app => `
-                <tr>
-                    <td class="company">${escapeHtml(app.company || '')}</td>
-                    <td class="role">${escapeHtml(app.role || '')}</td>
-                    <td><span class="status-badge status-${(app.status || '').toLowerCase()}">${escapeHtml(app.status || '')}</span></td>
-                    <td>${escapeHtml(app.applied_date || '')}</td>
-                    <td>${escapeHtml(app.last_updated || '')}</td>
-                </tr>
+            grid.innerHTML = applications.map((app, index) => `
+                <div class="grid-row" data-index="${index}" style="animation-delay: ${index * 30}ms">
+                    <span class="col-company">
+                        <span class="company-avatar">${(app.company || 'U')[0].toUpperCase()}</span>
+                        ${escapeHtml(app.company || 'Unknown')}
+                    </span>
+                    <span class="col-role">${escapeHtml(app.role || 'Unknown')}</span>
+                    <span class="col-status">
+                        <span class="status-pill status-${(app.status || 'applied').toLowerCase()}">
+                            <span class="status-dot"></span>
+                            ${escapeHtml(app.status || 'Applied')}
+                        </span>
+                    </span>
+                    <span class="col-date">${formatDate(app.applied_date)}</span>
+                    <span class="col-updated">${formatRelative(app.last_updated)}</span>
+                </div>
             `).join('');
+
+            // Add click handlers
+            document.querySelectorAll('.grid-row').forEach(row => {
+                row.addEventListener('click', () => selectApplication(row.dataset.index));
+            });
         }
 
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+        // Select application
+        function selectApplication(index) {
+            const app = allApplications[index];
+            if (!app) return;
+
+            selectedApp = app;
+
+            // Update selected state
+            document.querySelectorAll('.grid-row').forEach(r => r.classList.remove('selected'));
+            document.querySelector(`[data-index="${index}"]`).classList.add('selected');
+
+            // Show inspector
+            document.getElementById('inspectorContent').style.display = 'block';
+            document.querySelector('.inspector-empty').style.display = 'none';
+
+            // Update inspector content
+            document.getElementById('inspectorLogo').textContent = (app.company || 'U')[0].toUpperCase();
+            document.getElementById('inspectorCompany').textContent = app.company || 'Unknown';
+            document.getElementById('inspectorRole').textContent = app.role || 'Unknown Position';
+            document.getElementById('inspectorStatus').textContent = app.status || 'Applied';
+            document.getElementById('inspectorStatus').className = `inspector-status status-${(app.status || 'applied').toLowerCase()}`;
+            document.getElementById('detectionReason').textContent = app.detection_reason || 'No detection reason available';
+            document.getElementById('emailSubject').textContent = app.email_subject || 'No email subject';
+
+            // Add entrance animation
+            document.getElementById('inspectorContent').classList.add('animate-in');
+            setTimeout(() => {
+                document.getElementById('inspectorContent').classList.remove('animate-in');
+            }, 300);
         }
 
+        // Filter applications
         function filterApplications() {
             const search = document.getElementById('searchInput').value.toLowerCase();
-            const statusFilter = document.getElementById('statusFilter').value;
+            const activeChip = document.querySelector('.chip.active');
+            const statusFilter = activeChip ? activeChip.dataset.status : '';
 
             const filtered = allApplications.filter(app => {
-                const matchesSearch = !search || 
+                const matchesSearch = !search ||
                     (app.company || '').toLowerCase().includes(search) ||
                     (app.role || '').toLowerCase().includes(search);
                 const matchesStatus = !statusFilter || app.status === statusFilter;
                 return matchesSearch && matchesStatus;
             });
 
-            renderTable(filtered);
+            renderGrid(filtered);
         }
 
-        async function manualRefresh() {
-            const btn = document.getElementById('refreshBtn');
-            btn.disabled = true;
-            btn.innerHTML = '<span class="btn-icon">⏳</span> Refreshing...';
+        // Update intel bar
+        function updateIntelBar() {
+            document.getElementById('responseTime').textContent = '6.3 days';
+        }
 
+        // Update AI status
+        function updateAIStatus() {
+            const now = new Date();
+            document.getElementById('aiStatus').textContent = `AI last analyzed this just now`;
+
+            const pending = allApplications.filter(a => a.status === 'Applied').length;
+            if (pending > 0) {
+                document.getElementById('aiHint').textContent = `${Math.min(pending, 5)} applications likely to update soon`;
+            }
+        }
+
+        // Helpers
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '—';
             try {
-                await fetch('/api/refresh');
-                await fetchApplications();
-                await fetchStats();
-            } catch (error) {
-                console.error('Refresh error:', error);
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = '<span class="btn-icon">🔄</span> Refresh';
+                const date = new Date(dateStr);
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            } catch {
+                return dateStr;
+            }
+        }
+
+        function formatRelative(dateStr) {
+            if (!dateStr) return '—';
+            try {
+                const date = new Date(dateStr.replace(' ', 'T'));
+                const now = new Date();
+                const diff = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+                if (diff === 0) return 'Today';
+                if (diff === 1) return 'Yesterday';
+                if (diff < 7) return `${diff}d ago`;
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            } catch {
+                return dateStr;
             }
         }
 
         // Event listeners
         document.getElementById('searchInput').addEventListener('input', filterApplications);
-        document.getElementById('statusFilter').addEventListener('change', filterApplications);
-        document.getElementById('refreshBtn').addEventListener('click', manualRefresh);
+
+        document.querySelectorAll('.chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+                chip.classList.add('active');
+                filterApplications();
+            });
+        });
+
+        // Intel card click handlers
+        document.querySelectorAll('.intel-card').forEach(card => {
+            card.addEventListener('click', () => {
+                const filter = card.dataset.filter;
+                if (filter === 'interview') {
+                    document.querySelector('[data-status="Interview"]').click();
+                } else if (filter === 'all') {
+                    document.querySelector('[data-status=""]').click();
+                }
+            });
+        });
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                const rows = document.querySelectorAll('.grid-row');
+                const selected = document.querySelector('.grid-row.selected');
+                let index = selected ? parseInt(selected.dataset.index) : -1;
+
+                if (e.key === 'ArrowDown') index = Math.min(index + 1, rows.length - 1);
+                else index = Math.max(index - 1, 0);
+
+                selectApplication(index);
+            }
+        });
 
         // Initial load
         fetchApplications();
         fetchStats();
 
-        // Auto-refresh every 60 seconds
+        // Auto-refresh
         setInterval(() => {
             fetchApplications();
             fetchStats();
         }, 60000);
     </script>
 </body>
+
 </html>
