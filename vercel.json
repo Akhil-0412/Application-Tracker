@@ -4,10 +4,6 @@
         {
             "src": "api/index.py",
             "use": "@vercel/python"
-        },
-        {
-            "src": "dashboard/static/**",
-            "use": "@vercel/static"
         }
     ],
     "routes": [
@@ -19,9 +15,5 @@
             "src": "/(.*)",
             "dest": "/api/index.py"
         }
-    ],
-    "env": {
-        "SPREADSHEET_ID": "@spreadsheet_id",
-        "GOOGLE_CREDENTIALS": "@google_credentials"
-    }
+    ]
 }
