@@ -128,41 +128,51 @@ def index():
 @app.route("/api/applications")
 def api_applications():
     """API endpoint for applications data."""
-    applications = get_applications_from_sheet()
-    
-    if applications is None:
-        # Return sample data for demo/development
-        return jsonify([
-            {"company": "Demo Company", "role": "Software Engineer", "status": "Applied", "applied_date": "2026-02-07", "last_updated": "2026-02-07 12:00"}
-        ])
-    
-    # 1. Filter out "Unknown" applications (noise reduction)
-    filtered_applications = []
-    for app in applications:
-        company = app.get("company", "").lower()
-        role = app.get("role", "").lower()
+    try:
+        applications = get_applications_from_sheet()
         
-        # Skip if both company and role are unknown/generic
-        if (company in ["unknown", "unknown company", ""] and 
-            role in ["unknown", "unknown position", "", "unspecified"]):
-            continue
+        if applications is None:
+            return jsonify([
+                {"company": "Demo Company", "role": "Software Engineer", "status": "Applied", "applied_date": "2026-02-07", "last_updated": "2026-02-07 12:00", "detection_reason": "API returned None (Auth failed?)"}
+            ])
+        
+        # 1. Filter out "Unknown"
+        filtered_applications = []
+        for app in applications:
+            company = str(app.get("company", "")).lower().strip()
+            role = str(app.get("role", "")).lower().strip()
             
-        filtered_applications.append(app)
-    
-    # 2. Sort by applied_date (descending)
-    def parse_date(date_str):
-        if not date_str: return datetime.min
-        try:
-            return datetime.strptime(date_str, "%Y-%m-%d")
-        except:
+            if (company in ["unknown", "unknown company", ""] and 
+                role in ["unknown", "unknown position", "", "unspecified"]):
+                continue
+            filtered_applications.append(app)
+        
+        # 2. Sort by applied_date
+        def parse_date(date_str):
+            if not date_str: return datetime.min
+            s = str(date_str).strip()
+            formats = ["%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d", "%b %d, %Y"]
+            for fmt in formats:
+                try:
+                    return datetime.strptime(s, fmt)
+                except:
+                    continue
             return datetime.min
 
-    filtered_applications.sort(
-        key=lambda x: parse_date(x.get("applied_date", "")), 
-        reverse=True
-    )
-    
-    return jsonify(filtered_applications)
+        filtered_applications.sort(
+            key=lambda x: parse_date(x.get("applied_date", "")), 
+            reverse=True
+        )
+        
+        return jsonify(filtered_applications)
+
+    except Exception as e:
+        import traceback
+        return jsonify({
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "env_vars": {k: v for k, v in os.environ.items() if k.startswith("GOOGLE") or k == "SPREADSHEET_ID"}
+        }), 500
 
 
 @app.route("/api/stats")
