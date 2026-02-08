@@ -149,6 +149,9 @@ def api_applications():
         
         # 2. Sort by applied_date
         def parse_date(date_str):
+            # Ensure datetime is available
+            from datetime import datetime
+            
             if not date_str: return datetime.min
             s = str(date_str).strip()
             formats = ["%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d", "%b %d, %Y"]
@@ -171,7 +174,8 @@ def api_applications():
         return jsonify({
             "error": str(e),
             "traceback": traceback.format_exc(),
-            "env_vars": {k: v for k, v in os.environ.items() if k.startswith("GOOGLE") or k == "SPREADSHEET_ID"}
+            # Don't return env vars in case of secrets, just return keys
+            "env_vars_keys": list(os.environ.keys())
         }), 500
 
 
