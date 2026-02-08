@@ -6,11 +6,18 @@ import json
 from pathlib import Path
 
 # Add project root to path
-project_root = Path(__file__).parent.parent
+# On Vercel, the script runs from api/index.py, so root is parent
+# However, Vercel might place files differently.
+current_dir = Path(__file__).resolve().parent
+project_root = current_dir.parent
 sys.path.insert(0, str(project_root))
 
 from flask import Flask, render_template, jsonify
-from datetime import datetime
+# Try imports immediately to fail fast if they don't exist
+try:
+    from src.sheets_client import SheetsClient
+except ImportError:
+    SheetsClient = None
 
 app = Flask(
     __name__,
@@ -21,6 +28,7 @@ app = Flask(
 
 def setup_oauth_credentials():
     """Setup OAuth credentials from environment variables."""
+    # ... (same as before) ...
     client_creds = os.environ.get("GOOGLE_CLIENT_CREDENTIALS")
     token_json = os.environ.get("GOOGLE_TOKEN")
     
@@ -111,7 +119,10 @@ def get_stats_from_applications(applications):
 @app.route("/")
 def index():
     """Dashboard home page."""
-    return render_template("index.html")
+    try:
+        return render_template("index.html")
+    except Exception as e:
+        return jsonify({"error": str(e), "path": str(project_root)}), 500
 
 
 @app.route("/api/applications")
@@ -147,6 +158,37 @@ def health():
         "timestamp": datetime.now().isoformat(),
         "spreadsheet_configured": bool(os.environ.get("SPREADSHEET_ID")),
         "credentials_configured": bool(os.environ.get("GOOGLE_TOKEN"))
+    })
+
+@app.route("/debug")
+def debug():
+    """Debug file system."""
+    files = []
+    
+    # List files in current directory
+    try:
+        files.append(f"Current dir ({os.getcwd()}): {os.listdir(os.getcwd())}")
+    except Exception as e:
+        files.append(f"Error listing current: {e}")
+        
+    # List files in project root
+    try:
+        files.append(f"Project root ({project_root}): {os.listdir(project_root)}")
+    except Exception as e:
+        files.append(f"Error listing root: {e}")
+        
+    # Check templates dir
+    try:
+        tpl_dir = project_root / "dashboard" / "templates"
+        files.append(f"Templates ({tpl_dir}): {os.listdir(tpl_dir)}")
+    except Exception as e:
+        files.append(f"Error listing templates: {window.e}")
+
+    return jsonify({
+        "files": files,
+        "python_path": sys.path,
+        "template_folder": app.template_folder,
+        "static_folder": app.static_folder
     })
 
 
