@@ -289,14 +289,20 @@ class SheetsClient:
             print(f"Error getting applications: {e}")
             return []
 
-    def find_application(self, company: str, role: str) -> Optional[tuple[int, dict]]:
-        """Find an existing application by company and role."""
+    def find_application(self, company: str, role: str):
         applications = self.get_all_applications()
+
         for i, app in enumerate(applications):
-            if (app["company"].lower() == company.lower() and
-                app["role"].lower() == role.lower()):
-                return (i + 2, app)
+            if app["company"].lower() == company.lower():
+                # If either role is unknown, treat as same application
+                if (
+                    app["role"].lower() == role.lower() or
+                    app["role"].lower() == "unknown position" or
+                    role.lower() == "unknown position"
+                ):
+                    return (i + 2, app)
         return None
+
     
     def find_application_by_company(self, company: str) -> Optional[tuple[int, dict]]:
         """Find an existing application by company name only."""

@@ -1,4 +1,5 @@
 {
+    "name": "application-tracker",
     "rewrites": [
         {
             "source": "/static/(.*)",

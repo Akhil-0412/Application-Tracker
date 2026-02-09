@@ -12,6 +12,8 @@ current_dir = Path(__file__).resolve().parent
 project_root = current_dir.parent
 sys.path.insert(0, str(project_root))
 
+from datetime import datetime
+
 from flask import Flask, render_template, jsonify
 # Try imports immediately to fail fast if they don't exist
 try:
