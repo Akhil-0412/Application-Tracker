@@ -366,16 +366,50 @@ class SheetsClient:
         row_index: int,
         status: str,
         last_updated: str,
-        email_subject: str = ""
+        email_subject: str = "",
+        company: str = None,
+        role: str = None
     ) -> bool:
         """Update an existing application row."""
         try:
+            # Update Status, Last Updated, Subject (Cols C, E, F)
+            # Range C:F is Status, Applied, Last Updated, Subject
+            # Wait, header is Company, Role, Status, Applied, Last Updated, Subject
+            # Cols: A=0, B=1, C=2, D=3, E=4, F=5
+            
+            # We want to potentially update ALL columns if provided
+            # But let's keep it safe. If company/role provided, update A:B.
+            
+            requests = []
+            
+            # Update C (Status), E (Last Updated), F (Subject)
+            # We skip D (Applied Date) usually
+            
+            # Construct values for the update
+            # Note: batchUpdate or values().update?
+            # values().update is easier for contiguous ranges.
+            
+            # Let's update A:F row if company/role are provided
+            if company and role:
+                # Need to preserve Applied Date (D) if possible, or we just don't write it?
+                # accessing D is hard without reading.
+                # EASIER: Just update A:B separately.
+                
+                self.service.spreadsheets().values().update(
+                    spreadsheetId=self.spreadsheet_id,
+                    range=f"Applications!A{row_index}:B{row_index}",
+                    valueInputOption="RAW",
+                    body={"values": [[company, role]]}
+                ).execute()
+                
+            # Update Status etc.
             self.service.spreadsheets().values().update(
                 spreadsheetId=self.spreadsheet_id,
                 range=f"Applications!C{row_index}:F{row_index}",
                 valueInputOption="RAW",
                 body={"values": [[status, "", last_updated, email_subject]]}
             ).execute()
+            
             return True
         except Exception as e:
             print(f"Error updating sheet: {e}")

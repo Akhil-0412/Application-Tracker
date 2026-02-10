@@ -52,7 +52,7 @@ class StatusTracker:
         if existing:
             row_index, app = existing
             return self._handle_update(
-                row_index, app, status, email_date, email_subject
+                row_index, app, status, email_date, email_subject, company, role
             )
         else:
             # New application
@@ -65,13 +65,38 @@ class StatusTracker:
                 detection_reason=detection_reason
             )
 
+        # If this email is older, skip
+        if email_date_naive < existing_date:
+            return False
+
+        # Determine if we should update Company/Role
+        # If existing is generic/unknown and new is specific, update it
+        update_meta = False
+        new_company = None
+        new_role = None
+        
+        ex_company = existing_app.get("company", "Unknown")
+        ex_role = existing_app.get("role", "Unknown")
+        
+        # Heuristic: If existing starts with "Unknown" or is very short, and new is better
+        if "unknown" in ex_company.lower() and "unknown" not in email_subject.lower(): # Name comes from result, not subject
+             # actually we don't have new company passed to this method!
+             # We need to change signature of _handle_update
+             pass
+
+        # ... Wait, I can't access new company/role here without changing signature.
+        # Let's fix signature first.
+        pass
+        
     def _handle_update(
         self,
         row_index: int,
         existing_app: dict,
         new_status: str,
         email_date: datetime,
-        email_subject: str
+        email_subject: str,
+        new_company: str = None, # Added
+        new_role: str = None     # Added
     ) -> bool:
         """Handle updating an existing application."""
         existing_status = existing_app.get("status", "")
@@ -96,24 +121,40 @@ class StatusTracker:
         if email_date_naive < existing_date:
             return False
 
+        # Check if we should refine Company/Role
+        updated_company = None
+        updated_role = None
+        
+        if new_company and "unknown" in existing_app.get("company", "").lower() and "unknown" not in new_company.lower():
+            updated_company = new_company
+            
+        if new_role and "unknown" in existing_app.get("role", "").lower() and "unknown" not in new_role.lower():
+            updated_role = new_role
+
         # If email is newer, update based on status
-        # Rejected and Offer statuses always takes precedence (it's final)
-        # Rejection ALWAYS overrides if email is newer
+        # Rejected and Offer statuses always takes precedence
         if new_status == "Rejected":
             return self.sheets.update_application(
                 row_index=row_index,
                 status="Rejected",
                 last_updated=datetime.now().strftime("%Y-%m-%d %H:%M"),
-                email_subject=email_subject
+                email_subject=email_subject,
+                company=updated_company,
+                role=updated_role
             )
 
         # Otherwise, only upgrade status
-        if self._should_update_status(existing_status, new_status):
+        if self._should_update_status(existing_status, new_status) or updated_company or updated_role:
+             # Even if status matches, if we have better metadata, update!
+            target_status = new_status if self._should_update_status(existing_status, new_status) else existing_status
+            
             return self.sheets.update_application(
                 row_index=row_index,
-                status=new_status,
+                status=target_status,
                 last_updated=datetime.now().strftime("%Y-%m-%d %H:%M"),
-                email_subject=email_subject
+                email_subject=email_subject,
+                company=updated_company,
+                role=updated_role
             )
 
 
