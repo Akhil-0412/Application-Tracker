@@ -167,15 +167,12 @@ POSITIVE_PHRASES = [
     "extend an offer",
 ]
 
-# Job application email query - STRICT: ATS senders AND job subjects
+# Job application email query - BROAD: Keywords in subject, exclude user's own emails
 JOB_EMAIL_QUERY = """
-(from:noreply OR from:no-reply OR from:careers OR from:recruiting OR from:recruitment OR
-from:talent OR from:jobs OR from:hiring OR from:hr OR from:applications OR from:rlb OR from:pinpoint.email OR
-from:workday OR from:myworkday OR from:greenhouse OR from:lever OR from:icims OR from:taleo OR
-from:smartrecruiters OR from:jobvite OR from:ripplehire OR from:applytojob OR from:ashby OR from:breezy OR
-from:successfactors OR from:avature)
 subject:(application OR applied OR interview OR assessment OR position OR role OR 
-confirmed OR received OR resume OR thank OR opportunity OR update OR unfortunately OR regret)
+confirmed OR received OR resume OR thank OR opportunity OR update OR unfortunately OR regret OR 
+"not to progress" OR "status update")
+-from:me
 """
 
 # Clean up the query
