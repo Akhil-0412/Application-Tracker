@@ -28,6 +28,7 @@ jobs:
 
       - name: Setup Google credentials
         run: |
+          mkdir -p credentials
           echo "${{ secrets.GOOGLE_CREDENTIALS }}" > credentials/credentials.json
           echo "${{ secrets.GOOGLE_TOKEN }}" > credentials/token.json
 
