@@ -168,12 +168,7 @@ POSITIVE_PHRASES = [
 ]
 
 # Job application email query - BROAD: Keywords in subject, exclude user's own emails
-JOB_EMAIL_QUERY = """
-subject:(application OR applied OR interview OR assessment OR position OR role OR 
-confirmed OR received OR resume OR thank OR opportunity OR update OR unfortunately OR regret OR 
-"not to progress" OR "status update")
--from:me
-"""
+JOB_EMAIL_QUERY = 'subject:(application OR applied OR interview OR assessment OR position OR role OR confirmed OR received OR resume OR thank OR opportunity OR update OR unfortunately OR regret OR "not to progress" OR "status update") -from:me'
 
 # Clean up the query
 JOB_EMAIL_QUERY = " ".join(JOB_EMAIL_QUERY.split())
