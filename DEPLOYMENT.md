@@ -49,5 +49,6 @@ The workflow runs automatically every 15 minutes. You can also trigger it manual
 | File | Purpose |
 |------|---------|
 | `vercel.json` | Vercel deployment config |
-| `api/index.py` | Serverless function entry point |
-| `.github/workflows/monitor.yml` | GitHub Actions for 15-min monitor |
+
+## Deployment Log
+- **Last Triggered**: 2026-02-10 (Verify Vercel Connection)
