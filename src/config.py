@@ -157,6 +157,8 @@ POSITIVE_PHRASES = [
     "decided to pursue other candidates",
     "not selected",
     "another candidate",
+    "not to progress",
+    "not progressing",
     
     # Offer signals (explicit)
     "pleased to offer you",
@@ -167,7 +169,7 @@ POSITIVE_PHRASES = [
 
 # Job application email query - STRICT: ATS senders AND job subjects
 JOB_EMAIL_QUERY = """
-(from:noreply OR from:no-reply OR from:careers OR from:recruiting OR 
+(from:noreply OR from:no-reply OR from:careers OR from:recruiting OR from:recruitment OR
 from:talent OR from:jobs OR from:hiring OR from:hr OR from:applications OR
 from:workday OR from:myworkday OR from:greenhouse OR from:lever OR from:icims OR from:taleo OR
 from:smartrecruiters OR from:jobvite OR from:ripplehire OR from:applytojob OR from:ashby OR from:breezy OR
