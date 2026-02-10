@@ -37,6 +37,17 @@ jobs:
           echo "SPREADSHEET_ID=${{ secrets.SPREADSHEET_ID }}" > .env
           echo "GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}" >> .env
 
+      - name: Debug Environment
+        run: |
+          echo "Current directory: $(pwd)"
+          ls -R credentials
+          echo "Checking JSON validity..."
+          python -c "import json; json.load(open('credentials/credentials.json'))" && echo "credentials.json is valid" || echo "credentials.json is INVALID"
+          python -c "import json; json.load(open('credentials/token.json'))" && echo "token.json is valid" || echo "token.json is INVALID"
+          echo "Checking Environment Variables..."
+          if [ -z "$SPREADSHEET_ID" ]; then echo "SPREADSHEET_ID is missing"; else echo "SPREADSHEET_ID is set"; fi
+          if [ -z "$GROQ_API_KEY" ]; then echo "GROQ_API_KEY is missing"; else echo "GROQ_API_KEY is set"; fi
+
       - name: Run monitor
         run: |
           python main.py --days 1
