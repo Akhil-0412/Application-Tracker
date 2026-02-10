@@ -3,13 +3,14 @@ name: Gmail Monitor
 on:
   schedule:
     # Run every 15 minutes
-    - cron: '*/15 * * * *'
-  workflow_dispatch:  # Allow manual trigger
+    - cron: "*/15 * * * *"
+  workflow_dispatch: # Allow manual trigger
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    
+    environment: application-tracker-amber
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -17,8 +18,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: "3.11"
+          cache: "pip"
 
       - name: Install dependencies
         run: |
