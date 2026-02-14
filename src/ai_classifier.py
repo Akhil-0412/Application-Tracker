@@ -16,7 +16,9 @@ class ClassificationResult:
     status: str  # Applied, Assessment, Interview, Rejected
     confidence: float  # 0.0 - 1.0
     reasoning: str
+    reasoning: str
     source: str  # "ai" or "phrases"
+    action_link: Optional[str] = None
 
 
 class AIClassifier:
@@ -36,6 +38,7 @@ EXTRACT CAREFULLY:
 1. COMPANY: The actual company name (not email platform like Workday, RippleHire)
 2. ROLE: The EXACT job title mentioned
 3. STATUS: Based on email content
+4. ACTION_LINK: The most relevant action link from the email.
 
 STATUS DETERMINATION:
 - Applied = application received / confirmed
@@ -50,7 +53,7 @@ Body:
 {body}
 
 Return ONLY valid JSON:
-{{"company": "company name", "role": "exact job title", "status": "Applied|Assessment|Interview|Rejected", "confidence": 0.9, "reasoning": "brief reason"}}"""
+{{"company": "company name", "role": "exact job title", "status": "Applied|Assessment|Interview|Rejected", "confidence": 0.9, "reasoning": "brief reason", "action_link": "url"}}"""
 
     def __init__(self):
         self.client = None
@@ -149,6 +152,10 @@ Return ONLY valid JSON:
                 email.get("subject", "")
             )
 
+        # Get action links from email
+        action_links = email.get("action_links", [])
+        best_link = action_links[0] if action_links else None
+
         return ClassificationResult(
             company=company,
             role=role if role else "Unknown Position",
@@ -156,7 +163,9 @@ Return ONLY valid JSON:
             confidence=float(data.get("confidence", 0.8)),
             reasoning=f"{data.get('reasoning', 'Groq classification')} (model={model})",
             source="ai",
+            action_link=best_link
         )
+
 
     def _extract_role_from_body(self, body: str, subject: str) -> str:
         content = f"{subject} {body}"

@@ -282,8 +282,10 @@ class SheetsClient:
                     "applied_date": row[3],
                     "last_updated": row[4],
                     "email_subject": row[5],
-
+                    "detection_reason": row[6] if len(row) > 6 else "",
+                    "action_link": row[7] if len(row) > 7 else "",
                 })
+
             return applications
         except Exception as e:
             print(f"Error getting applications: {e}")
@@ -319,8 +321,10 @@ class SheetsClient:
         status: str,
         applied_date: datetime,
         email_subject: str = "",
-        detection_reason: str = ""
+        detection_reason: str = "",
+        action_link: str = ""
     ) -> bool:
+
         """Add a new application or update existing one."""
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
         
@@ -336,15 +340,23 @@ class SheetsClient:
 
         if existing:
             row_index, app = existing
+            row_index, app = existing
             return self.update_application(
-                row_index, status, now, email_subject
+                row_index, status, now, email_subject, action_link=action_link
             )
 
-        # Add new row with detection reason
+
+        # Add new row using explicit update (append is flaky)
         try:
-            self.service.spreadsheets().values().append(
+            # Get current application count to find next row
+            # This is expensive but reliable
+            apps = self.get_all_applications()
+            next_row = len(apps) + 2
+            
+            # Use update instead of append
+            self.service.spreadsheets().values().update(
                 spreadsheetId=self.spreadsheet_id,
-                range="Applications!A:G",
+                range=f"Applications!A{next_row}:G{next_row}",
                 valueInputOption="RAW",
                 body={"values": [[
                     company,
@@ -353,9 +365,13 @@ class SheetsClient:
                     applied_str,
                     now,
                     email_subject,
-                    detection_reason
+                    detection_reason,
+                    action_link
                 ]]}
+
             ).execute()
+            
+            print(f"Added new application at row {next_row}")
             return True
         except Exception as e:
             print(f"Error adding application: {e}")
@@ -368,8 +384,10 @@ class SheetsClient:
         last_updated: str,
         email_subject: str = "",
         company: str = None,
-        role: str = None
+        role: str = None,
+        action_link: str = ""
     ) -> bool:
+
         """Update an existing application row."""
         try:
             # Update Status, Last Updated, Subject (Cols C, E, F)
@@ -405,10 +423,11 @@ class SheetsClient:
             # Update Status etc.
             self.service.spreadsheets().values().update(
                 spreadsheetId=self.spreadsheet_id,
-                range=f"Applications!C{row_index}:F{row_index}",
+                range=f"Applications!C{row_index}:H{row_index}",
                 valueInputOption="RAW",
-                body={"values": [[status, "", last_updated, email_subject]]}
+                body={"values": [[status, "", last_updated, email_subject, "", action_link]]}
             ).execute()
+
             
             return True
         except Exception as e:

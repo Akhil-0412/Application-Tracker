@@ -37,6 +37,7 @@ SHEET_HEADERS = [
     "Last Updated",
     "Email Subject",
     "Detection Reason",
+    "Action Link",
 ]
 
 # Senders to ALWAYS IGNORE (marketing/alerts, never job apps)

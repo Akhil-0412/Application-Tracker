@@ -159,8 +159,9 @@ class GmailClient:
             except Exception:
                 email_date = datetime.now()
 
-            # Extract body using robust BS4 method
-            body = self._extract_body(message.get("payload", {}))
+            # Extract body and links using robust BS4 method
+            body, action_links = self._extract_body_and_links(message.get("payload", {}))
+
 
             # Extract sender info
             from_header = header_dict.get("from", "")
@@ -175,15 +176,20 @@ class GmailClient:
                 "sender_domain": sender_domain,
                 "date": email_date,
                 "body": body,
+                "action_links": action_links,
                 "snippet": message.get("snippet", ""),
+
             }
 
         except Exception as e:
             print(f"Error getting message details: {e}")
             return {}
 
-    def _extract_body(self, payload: dict) -> str:
-        """Robustly extract text from HTML/plain emails using BeautifulSoup."""
+    def _extract_body_and_links(self, payload: dict) -> tuple[str, list[str]]:
+        """
+        Robustly extract text and ACTION LINKS from HTML/plain emails.
+        Returns: (clean_text, list_of_urls)
+        """
         def decode_part(part):
             if 'data' not in part.get('body', {}):
                 return ""
@@ -193,36 +199,72 @@ class GmailClient:
             except Exception:
                 return ""
         
+        text = ""
+        links = []
+
+        # Helper to extract links from HTML
+        def extract_action_links(html_content):
+            found_links = []
+            try:
+                soup = BeautifulSoup(html_content, 'html.parser')
+                for a in soup.find_all('a', href=True):
+                    href = a['href']
+                    text_content = a.get_text().strip().lower()
+                    
+                    # Keywords for action links
+                    keywords = [
+                        "start test", "start assessment", "take the test", "take test",
+                        "coding challenge", "hackerrank", "codility", "codesignal",
+                        "schedule interview", "schedule a call", "book a time",
+                        "view application", "check status", "accept offer", "sign offer"
+                    ]
+                    
+                    if any(k in text_content for k in keywords):
+                        found_links.append(href)
+            except Exception:
+                pass
+            return found_links
+
         # Try parts first
         if 'parts' in payload:
             for part in payload['parts']:
                 mime = part.get('mimeType', '')
                 if mime == 'text/plain':
-                    return decode_part(part)
+                    text += decode_part(part) + "\n"
                 elif mime == 'text/html':
                     html = decode_part(part)
                     if html:
-                        # Strip HTML tags + clean whitespace using BeautifulSoup
+                        # Extract links BEFORE stripping
+                        links.extend(extract_action_links(html))
+                        
+                        # Strip HTML tags + clean whitespace
                         try:
                             soup = BeautifulSoup(html, 'html.parser')
-                            return ' '.join(soup.get_text().split())
+                            text += ' '.join(soup.get_text().split()) + "\n"
                         except Exception:
-                            # Fallback if BS4 fails
-                            return self._html_to_text(html)
+                            text += self._html_to_text(html) + "\n"
         
-        # Fallback to body
-        if 'body' in payload and 'data' in payload['body']:
+        # Fallback to body if no parts or empty text
+        if not text and 'body' in payload and 'data' in payload['body']:
             content = decode_part(payload)
             # If it looks like HTML, clean it
             if '<html' in content.lower() or '<body' in content.lower() or '<div' in content.lower():
+                links.extend(extract_action_links(content))
                 try:
                     soup = BeautifulSoup(content, 'html.parser')
-                    return ' '.join(soup.get_text().split())
+                    text = ' '.join(soup.get_text().split())
                 except Exception:
-                    return self._html_to_text(content)
-            return content
+                    text = self._html_to_text(content)
+            else:
+                text = content
         
-        return ""
+        return text.strip(), list(set(links))  # Dedup links
+
+    def _extract_body(self, payload: dict) -> str:
+        """Legacy wrapper for backward compatibility."""
+        text, _ = self._extract_body_and_links(payload)
+        return text
+
 
     def _html_to_text(self, html: str) -> str:
         """Simple HTML to text conversion (fallback)."""

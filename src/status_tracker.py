@@ -45,14 +45,16 @@ class StatusTracker:
         company = result.company
         role = result.role
         status = result.status
+        action_link = result.action_link or ""
 
         # Check if this is a new application or update
         existing = self.sheets.find_application(company, role)
 
         if existing:
             row_index, app = existing
+            row_index, app = existing
             return self._handle_update(
-                row_index, app, status, email_date, email_subject, company, role
+                row_index, app, status, email_date, email_subject, company, role, action_link
             )
         else:
             # New application
@@ -62,8 +64,10 @@ class StatusTracker:
                 status=status,
                 applied_date=email_date,
                 email_subject=email_subject,
-                detection_reason=detection_reason
+                detection_reason=detection_reason,
+                action_link=action_link
             )
+
 
         # If this email is older, skip
         if email_date_naive < existing_date:
@@ -95,9 +99,12 @@ class StatusTracker:
         new_status: str,
         email_date: datetime,
         email_subject: str,
-        new_company: str = None, # Added
-        new_role: str = None     # Added
+
+        new_company: str = None, 
+        new_role: str = None,
+        action_link: str = ""
     ) -> bool:
+
         """Handle updating an existing application."""
         existing_status = existing_app.get("status", "")
         last_updated_str = existing_app.get("last_updated", "")
@@ -138,10 +145,13 @@ class StatusTracker:
                 row_index=row_index,
                 status="Rejected",
                 last_updated=datetime.now().strftime("%Y-%m-%d %H:%M"),
+
                 email_subject=email_subject,
                 company=updated_company,
-                role=updated_role
+                role=updated_role,
+                action_link=action_link
             )
+
 
         # Otherwise, only upgrade status
         if self._should_update_status(existing_status, new_status) or updated_company or updated_role:
@@ -154,8 +164,10 @@ class StatusTracker:
                 last_updated=datetime.now().strftime("%Y-%m-%d %H:%M"),
                 email_subject=email_subject,
                 company=updated_company,
-                role=updated_role
+                role=updated_role,
+                action_link=action_link
             )
+
 
 
         return False
@@ -171,6 +183,9 @@ class StatusTracker:
         
         # logic in _handle_update: if new_status == "Rejected" OR should_update_status...
         # Here we just compare priorities.
+        if action_link:
+             return True
+        
         return new_priority >= current_priority
 
     def get_statistics(self) -> dict:
