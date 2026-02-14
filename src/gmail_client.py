@@ -219,8 +219,19 @@ class GmailClient:
                         "view application", "check status", "accept offer", "sign offer"
                     ]
                     
-                    if any(k in text_content for k in keywords):
+                    # URL patterns for action links (when text is generic/missing)
+                    url_patterns = [
+                        "hackerrank.com/test/",
+                        "hackerrank.com/tests/",
+                        "codility.com/test/",
+                        "codesignal.com/test/",
+                        "hirevue.com/interview/",
+                        "calendly.com",
+                    ]
+                    
+                    if any(k in text_content for k in keywords) or any(p in href.lower() for p in url_patterns):
                         found_links.append(href)
+
             except Exception:
                 pass
             return found_links
