@@ -251,7 +251,8 @@ def process_emails():
                     result=result,
                     email_date=email.get("date", datetime.now()),
                     email_subject=email.get("subject", ""),
-                    detection_reason=email.get("detection_reason", "")
+                    detection_reason=email.get("detection_reason", ""),
+                    force_update=request.args.get("force") == "true"
                 )
                 
                 if updated:

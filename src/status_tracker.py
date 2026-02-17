@@ -28,7 +28,11 @@ class StatusTracker:
         result: ClassificationResult,
         email_date: datetime,
         email_subject: str,
-        detection_reason: str = ""
+        result: ClassificationResult,
+        email_date: datetime,
+        email_subject: str,
+        detection_reason: str = "",
+        force_update: bool = False
     ) -> tuple[bool, str]:
         """
         Process a classification result and update the sheet if needed.
@@ -54,7 +58,7 @@ class StatusTracker:
         if existing:
             row_index, app = existing
             return self._handle_update(
-                row_index, app, status, email_date, email_subject, company, role, action_link
+                row_index, app, status, email_date, email_subject, company, role, action_link, force_update
             )
         else:
             # New application
@@ -106,7 +110,8 @@ class StatusTracker:
 
         new_company: str = None, 
         new_role: str = None,
-        action_link: str = ""
+        action_link: str = "",
+        force_update: bool = False
     ) -> tuple[bool, str]:
 
 
@@ -129,8 +134,8 @@ class StatusTracker:
         except Exception:
             email_date_naive = datetime.now()
 
-        # If this email is older, skip
-        if email_date_naive < existing_date:
+        # If this email is older, skip (unless forced)
+        if not force_update and email_date_naive < existing_date:
             return False, f"Email older than last update ({existing_date})"
 
 
