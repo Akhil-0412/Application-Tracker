@@ -168,9 +168,9 @@ class StatusTracker:
 
 
         # Otherwise, only upgrade status
-        if self._should_update_status(existing_status, new_status) or updated_company or updated_role:
+        if self._should_update_status(existing_status, new_status, action_link) or updated_company or updated_role:
              # Even if status matches, if we have better metadata, update!
-            target_status = new_status if self._should_update_status(existing_status, new_status) else existing_status
+            target_status = new_status if self._should_update_status(existing_status, new_status, action_link) else existing_status
             
             success = self.sheets.update_application(
                 row_index=row_index,
@@ -189,7 +189,7 @@ class StatusTracker:
         return False, "No status update needed"
 
 
-    def _should_update_status(self, current: str, new: str) -> bool:
+    def _should_update_status(self, current: str, new: str, action_link: str = "") -> bool:
         """Determine if we should update from current to new status."""
         current_priority = self.STATUS_PRIORITY.get(current, 0)
         new_priority = self.STATUS_PRIORITY.get(new, 0)
