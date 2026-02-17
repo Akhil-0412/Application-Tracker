@@ -29,7 +29,7 @@ class StatusTracker:
         email_date: datetime,
         email_subject: str,
         detection_reason: str = ""
-    ) -> bool:
+    ) -> tuple[bool, str]:
         """
         Process a classification result and update the sheet if needed.
 
@@ -40,8 +40,9 @@ class StatusTracker:
             detection_reason: Why this email was detected as an application
 
         Returns:
-            True if application was added/updated
+            (success, reason)
         """
+
         company = result.company
         role = result.role
         status = result.status
@@ -53,12 +54,12 @@ class StatusTracker:
         if existing:
             row_index, app = existing
             row_index, app = existing
-            return self._handle_update(
-                row_index, app, status, email_date, email_subject, company, role, action_link
-            )
+            if updated:
+                return True, f"Updated: {reason}"
+            return False, f"Skipped: {reason}"
         else:
             # New application
-            return self.sheets.add_application(
+            success = self.sheets.add_application(
                 company=company,
                 role=role,
                 status=status,
@@ -67,6 +68,10 @@ class StatusTracker:
                 detection_reason=detection_reason,
                 action_link=action_link
             )
+            if success:
+                return True, "Created new application"
+            return False, "Failed to create application (Sheet Error)"
+
 
 
         # If this email is older, skip
@@ -103,7 +108,8 @@ class StatusTracker:
         new_company: str = None, 
         new_role: str = None,
         action_link: str = ""
-    ) -> bool:
+    ) -> tuple[bool, str]:
+
 
         """Handle updating an existing application."""
         existing_status = existing_app.get("status", "")
@@ -126,7 +132,8 @@ class StatusTracker:
 
         # If this email is older, skip
         if email_date_naive < existing_date:
-            return False
+            return False, f"Email older than last update ({existing_date})"
+
 
         # Check if we should refine Company/Role
         updated_company = None
@@ -141,7 +148,7 @@ class StatusTracker:
         # If email is newer, update based on status
         # Rejected and Offer statuses always takes precedence
         if new_status == "Rejected":
-            return self.sheets.update_application(
+            success = self.sheets.update_application(
                 row_index=row_index,
                 status="Rejected",
                 last_updated=datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -151,6 +158,8 @@ class StatusTracker:
                 role=updated_role,
                 action_link=action_link
             )
+            return success, "Marked as Rejected"
+
 
 
         # Otherwise, only upgrade status
@@ -158,7 +167,7 @@ class StatusTracker:
              # Even if status matches, if we have better metadata, update!
             target_status = new_status if self._should_update_status(existing_status, new_status) else existing_status
             
-            return self.sheets.update_application(
+            success = self.sheets.update_application(
                 row_index=row_index,
                 status=target_status,
                 last_updated=datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -167,10 +176,13 @@ class StatusTracker:
                 role=updated_role,
                 action_link=action_link
             )
+            return success, f"Updated status to {target_status}"
 
 
 
-        return False
+
+        return False, "No status update needed"
+
 
     def _should_update_status(self, current: str, new: str) -> bool:
         """Determine if we should update from current to new status."""

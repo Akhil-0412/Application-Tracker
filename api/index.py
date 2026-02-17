@@ -247,7 +247,7 @@ def process_emails():
                 result = classifier.classify(email)
                 
                 # Track
-                updated = tracker.process_classification(
+                updated, reason = tracker.process_classification(
                     result=result,
                     email_date=email.get("date", datetime.now()),
                     email_subject=email.get("subject", ""),
@@ -256,7 +256,7 @@ def process_emails():
                 
                 if updated:
                     processed_count += 1
-                    details.append(f"{result.company} - {result.role}: {result.status}")
+                    details.append(f"{result.company} - {result.role}: {result.status} ({reason})")
                 
                 if debug_mode:
                     skipped.append({ # reuse skipping list for kept ones too in debug
@@ -265,8 +265,10 @@ def process_emails():
                         "role": result.role,
                         "status": result.status,
                         "updated": updated,
+                        "update_reason": reason,
                         "type": "kept"
                     })
+
 
                     
             except Exception as e:

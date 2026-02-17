@@ -45,16 +45,20 @@ def process_emails(gmail: GmailClient, classifier: AIClassifier, tracker: Status
             continue
             
         try:
+            print(f"   Processing: {email.get('subject')} ({email.get('date')})")
             # Classify the email
             result = classifier.classify(email)
+            print(f"      -> Classified: {result.company} | {result.role} | {result.status}")
             
             # Track the application
-            updated = tracker.process_classification(
+            updated, reason = tracker.process_classification(
                 result=result,
                 email_date=email.get("date", datetime.now()),
                 email_subject=email.get("subject", ""),
                 detection_reason=email.get("detection_reason", "")
             )
+            print(f"      -> Tracker update: {updated} ({reason})")
+
             
             if updated:
                 status_marker = {
@@ -93,7 +97,7 @@ def live_monitor(gmail: GmailClient, classifier: AIClassifier, tracker: StatusTr
                     
                     try:
                         result = classifier.classify(email)
-                        updated = tracker.process_classification(
+                        updated, reason = tracker.process_classification(
                             result=result,
                             email_date=email.get("date", datetime.now()),
                             email_subject=email.get("subject", ""),
@@ -101,7 +105,8 @@ def live_monitor(gmail: GmailClient, classifier: AIClassifier, tracker: StatusTr
                         )
                         
                         if updated:
-                            print(f"   [NEW] {result.company} - {result.role}: {result.status}")
+                            print(f"   [NEW] {result.company} - {result.role}: {result.status} ({reason})")
+
                             
                     except Exception as e:
                         print(f"   [WARN] Error: {e}")
