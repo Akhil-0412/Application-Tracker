@@ -14,7 +14,8 @@ sys.path.insert(0, str(project_root))
 
 from datetime import datetime
 
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
+
 # Try imports immediately to fail fast if they don't exist
 try:
     from src.sheets_client import SheetsClient
@@ -217,10 +218,16 @@ def process_emails():
         
         # 3. Fetch & Process (Limit to 1 day and 20 emails to avoid timeout)
         # Vercel functions have 10s (Hobby) or 60s (Pro) limit
-        days_back = 1
+        # Default to 1 day, but allow override via query param
+        try:
+            days_back = int(request.args.get("days", 1))
+        except ValueError:
+            days_back = 1
+            
         max_emails = 20
         
         emails = gmail.get_messages(days_back=days_back, max_results=max_emails)
+
         
         processed_count = 0
         details = []
