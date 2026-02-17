@@ -97,8 +97,10 @@ class GmailClient:
         self,
         days_back: int = 7,
         max_results: int = 500,  # Increased from 100 to capture more emails
-        after_date: Optional[datetime] = None
-    ) -> list[dict]:
+        after_date: Optional[datetime] = None,
+        return_skipped: bool = False
+    ) -> list[dict] | tuple[list[dict], list[dict]]:
+
         """
         Fetch job application emails using JOB_EMAIL_QUERY from config.
         """
@@ -120,6 +122,7 @@ class GmailClient:
 
             messages = results.get("messages", [])
             all_emails = []
+            skipped_emails = []
             
             for msg in messages:
                 email_data = self.get_message_details(msg["id"])
@@ -133,12 +136,25 @@ class GmailClient:
                     if should_keep:
                         email_data["detection_reason"] = detection_reason
                         all_emails.append(email_data)
+                    else:
+                        if return_skipped:
+                            skipped_emails.append({
+                                "subject": email_data.get("subject"),
+                                "sender": email_data.get("sender_email"),
+                                "reason": detection_reason
+                            })
+
                     
+            if return_skipped:
+                return all_emails, skipped_emails
             return all_emails
 
         except Exception as e:
             print(f"Error fetching messages: {e}")
+            if return_skipped:
+                return [], []
             return []
+
 
     def get_message_details(self, message_id: str) -> dict:
         """Get full details of a specific email."""

@@ -224,9 +224,16 @@ def process_emails():
         except ValueError:
             days_back = 1
             
+        debug_mode = request.args.get("debug") == "true"
+            
         max_emails = 20
         
-        emails = gmail.get_messages(days_back=days_back, max_results=max_emails)
+        # Get emails (and skipped ones if debugging)
+        if debug_mode:
+            emails, skipped = gmail.get_messages(days_back=days_back, max_results=max_emails, return_skipped=True)
+        else:
+            emails = gmail.get_messages(days_back=days_back, max_results=max_emails)
+            skipped = []
 
         
         processed_count = 0
@@ -255,12 +262,23 @@ def process_emails():
                 print(f"Error processing email {email.get('id')}: {e}")
                 continue
         
-        return jsonify({
+        response = {
             "status": "success",
             "processed": processed_count,
             "details": details,
             "message": f"Processed {processed_count} updates from last {days_back} days"
-        })
+        }
+        
+        if debug_mode:
+            response["debug"] = {
+                "total_found_in_query": len(emails) + len(skipped),
+                "kept_count": len(emails),
+                "skipped_count": len(skipped),
+                "skipped_samples": skipped[:10],  # Show first 10 skipped
+                "kept_samples": [e.get("subject") for e in emails[:5]]
+            }
+            
+        return jsonify(response)
         
     except Exception as e:
         import traceback
