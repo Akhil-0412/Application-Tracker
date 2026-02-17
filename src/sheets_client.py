@@ -323,7 +323,8 @@ class SheetsClient:
         email_subject: str = "",
         detection_reason: str = "",
         action_link: str = ""
-    ) -> bool:
+    ) -> tuple[bool, str]:
+
 
         """Add a new application or update existing one."""
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -354,9 +355,10 @@ class SheetsClient:
             next_row = len(apps) + 2
             
             # Use update instead of append
+            # Fixed range to A:H (8 columns) to match data length
             self.service.spreadsheets().values().update(
                 spreadsheetId=self.spreadsheet_id,
-                range=f"Applications!A{next_row}:G{next_row}",
+                range=f"Applications!A{next_row}:H{next_row}",
                 valueInputOption="RAW",
                 body={"values": [[
                     company,
@@ -371,11 +373,16 @@ class SheetsClient:
 
             ).execute()
             
+            # Apply conditional formatting color manually for the new row
+            self.apply_row_color(next_row, status)
+            
             print(f"Added new application at row {next_row}")
-            return True
+            return True, f"Added at row {next_row}"
         except Exception as e:
-            print(f"Error adding application: {e}")
-            return False
+            msg = f"Error adding application: {str(e)}"
+            print(msg)
+            return False, msg
+
 
     def update_application(
         self,
@@ -386,53 +393,52 @@ class SheetsClient:
         company: str = None,
         role: str = None,
         action_link: str = ""
-    ) -> bool:
-
+    ) -> tuple[bool, str]:
         """Update an existing application row."""
         try:
-            # Update Status, Last Updated, Subject (Cols C, E, F)
-            # Range C:F is Status, Applied, Last Updated, Subject
-            # Wait, header is Company, Role, Status, Applied, Last Updated, Subject
-            # Cols: A=0, B=1, C=2, D=3, E=4, F=5
+            # Use batchUpdate to avoid overwriting Applied Date (Col D) and Reason (Col G)
+            data = [
+                # Status (Col C)
+                {
+                    "range": f"Applications!C{row_index}",
+                    "values": [[status]]
+                },
+                # Last Updated, Email Subject (Cols E, F)
+                {
+                    "range": f"Applications!E{row_index}:F{row_index}",
+                    "values": [[last_updated, email_subject]]
+                },
+                # Action Link (Col H)
+                {
+                    "range": f"Applications!H{row_index}",
+                    "values": [[action_link]]
+                }
+            ]
             
-            # We want to potentially update ALL columns if provided
-            # But let's keep it safe. If company/role provided, update A:B.
-            
-            requests = []
-            
-            # Update C (Status), E (Last Updated), F (Subject)
-            # We skip D (Applied Date) usually
-            
-            # Construct values for the update
-            # Note: batchUpdate or values().update?
-            # values().update is easier for contiguous ranges.
-            
-            # Let's update A:F row if company/role are provided
+            # If company/role provided, update A:B
             if company and role:
-                # Need to preserve Applied Date (D) if possible, or we just don't write it?
-                # accessing D is hard without reading.
-                # EASIER: Just update A:B separately.
-                
-                self.service.spreadsheets().values().update(
-                    spreadsheetId=self.spreadsheet_id,
-                    range=f"Applications!A{row_index}:B{row_index}",
-                    valueInputOption="RAW",
-                    body={"values": [[company, role]]}
-                ).execute()
-                
-            # Update Status etc.
-            self.service.spreadsheets().values().update(
-                spreadsheetId=self.spreadsheet_id,
-                range=f"Applications!C{row_index}:H{row_index}",
-                valueInputOption="RAW",
-                body={"values": [[status, "", last_updated, email_subject, "", action_link]]}
-            ).execute()
+                data.append({
+                    "range": f"Applications!A{row_index}:B{row_index}",
+                    "values": [[company, role]]
+                })
 
+            self.service.spreadsheets().values().batchUpdate(
+                spreadsheetId=self.spreadsheet_id,
+                body={
+                    "valueInputOption": "RAW",
+                    "data": data
+                }
+            ).execute()
             
-            return True
+            # Update row color based on status
+            self.apply_row_color(row_index, status)
+
+            return True, "Updated successfully"
         except Exception as e:
-            print(f"Error updating sheet: {e}")
-            return False
+            msg = f"Error updating sheet: {str(e)}"
+            print(msg)
+            return False, msg
+
 
     def clear_sheet(self) -> bool:
         """Clear all application data from the sheet (keeps headers)."""
