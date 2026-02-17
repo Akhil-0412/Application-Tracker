@@ -176,8 +176,20 @@ POSITIVE_PHRASES = [
     "pleased to offer you",
     "offer of employment",
     "job offer",
+    "offer of employment",
+    "job offer",
     "extend an offer",
+
+    # Generic updates (often used for both rejections and next steps)
+    "application update",
+    "update on your application",
+    "status of your application",
+    "regarding your application",
+    "about your application",
+    "your application for",
+    "your candidacy",
 ]
+
 
 # Job application email query - BROAD: Keywords in subject, exclude user's own emails
 JOB_EMAIL_QUERY = 'subject:(application OR applied OR interview OR assessment OR position OR role OR confirmed OR received OR resume OR thank OR opportunity OR update OR unfortunately OR regret OR "not to progress" OR "status update") -from:me'

@@ -257,8 +257,20 @@ def process_emails():
                 if updated:
                     processed_count += 1
                     details.append(f"{result.company} - {result.role}: {result.status}")
+                
+                if debug_mode:
+                    skipped.append({ # reuse skipping list for kept ones too in debug
+                        "subject": email.get("subject"),
+                        "company": result.company,
+                        "role": result.role,
+                        "status": result.status,
+                        "updated": updated,
+                        "type": "kept"
+                    })
+
                     
             except Exception as e:
+
                 print(f"Error processing email {email.get('id')}: {e}")
                 continue
         
