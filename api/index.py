@@ -18,8 +18,15 @@ from flask import Flask, render_template, jsonify
 # Try imports immediately to fail fast if they don't exist
 try:
     from src.sheets_client import SheetsClient
+    from src.gmail_client import GmailClient
+    from src.ai_classifier import AIClassifier
+    from src.status_tracker import StatusTracker
 except ImportError:
     SheetsClient = None
+    GmailClient = None
+    AIClassifier = None
+    StatusTracker = None
+
 
 app = Flask(
     __name__,
@@ -190,6 +197,71 @@ def api_stats():
         return jsonify({"total": 1, "Applied": 1, "Assessment": 0, "Interview": 0, "Rejected": 0})
     
     return jsonify(get_stats_from_applications(applications))
+
+
+@app.route("/api/process")
+def process_emails():
+    """Trigger email processing (Cron job entry point)."""
+    # 1. Setup credentials
+    setup_oauth_credentials()
+    
+    # 2. Initialize clients
+    try:
+        if not GmailClient:
+            return jsonify({"error": "Modules not loaded"}), 500
+            
+        gmail = GmailClient()
+        sheets = SheetsClient()
+        classifier = AIClassifier()
+        tracker = StatusTracker(sheets)
+        
+        # 3. Fetch & Process (Limit to 1 day and 20 emails to avoid timeout)
+        # Vercel functions have 10s (Hobby) or 60s (Pro) limit
+        days_back = 1
+        max_emails = 20
+        
+        emails = gmail.get_messages(days_back=days_back, max_results=max_emails)
+        
+        processed_count = 0
+        details = []
+        
+        for email in emails:
+            if not email: continue
+            
+            try:
+                # Classify
+                result = classifier.classify(email)
+                
+                # Track
+                updated = tracker.process_classification(
+                    result=result,
+                    email_date=email.get("date", datetime.now()),
+                    email_subject=email.get("subject", ""),
+                    detection_reason=email.get("detection_reason", "")
+                )
+                
+                if updated:
+                    processed_count += 1
+                    details.append(f"{result.company} - {result.role}: {result.status}")
+                    
+            except Exception as e:
+                print(f"Error processing email {email.get('id')}: {e}")
+                continue
+        
+        return jsonify({
+            "status": "success",
+            "processed": processed_count,
+            "details": details,
+            "message": f"Processed {processed_count} updates from last {days_back} days"
+        })
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
 
 
 @app.route("/api/health")

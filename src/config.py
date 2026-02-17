@@ -10,8 +10,19 @@ load_dotenv()
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent
 CREDENTIALS_DIR = PROJECT_ROOT / "credentials"
-TOKEN_PATH = CREDENTIALS_DIR / "token.json"
-CREDENTIALS_PATH = CREDENTIALS_DIR / "credentials.json"
+
+# Check if running on Vercel
+IS_VERCEL = os.environ.get("VERCEL") == "1"
+
+if IS_VERCEL:
+    # On Vercel, use /tmp for writable credentials
+    TOKEN_PATH = Path("/tmp/token.json")
+    CREDENTIALS_PATH = Path("/tmp/credentials.json")
+else:
+    # Local development
+    TOKEN_PATH = CREDENTIALS_DIR / "token.json"
+    CREDENTIALS_PATH = CREDENTIALS_DIR / "credentials.json"
+
 
 # Gmail API scopes
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
