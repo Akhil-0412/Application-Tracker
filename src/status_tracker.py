@@ -53,13 +53,12 @@ class StatusTracker:
 
         if existing:
             row_index, app = existing
-            row_index, app = existing
-            if updated:
-                return True, f"Updated: {reason}"
-            return False, f"Skipped: {reason}"
+            return self._handle_update(
+                row_index, app, status, email_date, email_subject, company, role, action_link
+            )
         else:
             # New application
-            success = self.sheets.add_application(
+            added, reason = self.sheets.add_application(
                 company=company,
                 role=role,
                 status=status,
@@ -68,9 +67,9 @@ class StatusTracker:
                 detection_reason=detection_reason,
                 action_link=action_link
             )
-            if success:
+            if added:
                 return True, "Created new application"
-            return False, "Failed to create application (Sheet Error)"
+            return False, f"Failed to create application: {reason}"
 
 
 
@@ -145,6 +144,7 @@ class StatusTracker:
         if new_role and "unknown" in existing_app.get("role", "").lower() and "unknown" not in new_role.lower():
             updated_role = new_role
 
+
         # If email is newer, update based on status
         # Rejected and Offer statuses always takes precedence
         if new_status == "Rejected":
@@ -196,9 +196,10 @@ class StatusTracker:
         # logic in _handle_update: if new_status == "Rejected" OR should_update_status...
         # Here we just compare priorities.
         if action_link:
-             return True
+             return True # If there's a link, we want to update it
         
         return new_priority >= current_priority
+
 
     def get_statistics(self) -> dict:
         """Get application statistics."""
