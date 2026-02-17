@@ -28,9 +28,6 @@ class StatusTracker:
         result: ClassificationResult,
         email_date: datetime,
         email_subject: str,
-        result: ClassificationResult,
-        email_date: datetime,
-        email_subject: str,
         detection_reason: str = "",
         force_update: bool = False
     ) -> tuple[bool, str]:
