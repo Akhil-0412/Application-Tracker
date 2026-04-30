@@ -103,7 +103,11 @@ class SheetsClient:
                 for sheet in result.get("sheets", []):
                     if sheet["properties"]["title"] == "Applications":
                         self.sheet_id = sheet["properties"]["sheetId"]
-                        break
+                
+                settings_exists = any(s["properties"]["title"] == "Settings" for s in result.get("sheets", []))
+                if not settings_exists:
+                    self._create_settings_sheet()
+                    
                 print(f"Using existing spreadsheet: https://docs.google.com/spreadsheets/d/{self.spreadsheet_id}")
                 return
             except Exception:
@@ -112,9 +116,10 @@ class SheetsClient:
         # Create new spreadsheet
         spreadsheet = {
             "properties": {"title": SPREADSHEET_NAME},
-            "sheets": [{
-                "properties": {"title": "Applications", "sheetId": 0}
-            }]
+            "sheets": [
+                {"properties": {"title": "Applications", "sheetId": 0}},
+                {"properties": {"title": "Settings"}}
+            ]
         }
         result = self.service.spreadsheets().create(body=spreadsheet).execute()
         self.spreadsheet_id = result["spreadsheetId"]
@@ -127,6 +132,31 @@ class SheetsClient:
         # Add headers and set up formatting
         self._add_headers()
         self._setup_conditional_formatting()
+        self._setup_settings_sheet()
+
+    def _create_settings_sheet(self):
+        """Create the Settings tab in an existing spreadsheet."""
+        try:
+            request = {"addSheet": {"properties": {"title": "Settings"}}}
+            self.service.spreadsheets().batchUpdate(
+                spreadsheetId=self.spreadsheet_id,
+                body={"requests": [request]}
+            ).execute()
+            self._setup_settings_sheet()
+        except Exception as e:
+            print(f"Warning: Could not create Settings sheet: {e}")
+
+    def _setup_settings_sheet(self):
+        """Initialize headers for the Settings tab."""
+        try:
+            self.service.spreadsheets().values().update(
+                spreadsheetId=self.spreadsheet_id,
+                range="Settings!A1:B1",
+                valueInputOption="RAW",
+                body={"values": [["Key", "Value"]]}
+            ).execute()
+        except Exception:
+            pass
 
     def _add_headers(self):
         """Add header row to the spreadsheet."""
@@ -456,3 +486,29 @@ class SheetsClient:
     def get_spreadsheet_url(self) -> str:
         """Get the URL to the spreadsheet."""
         return f"https://docs.google.com/spreadsheets/d/{self.spreadsheet_id}"
+
+    def get_last_run_date(self) -> Optional[datetime]:
+        """Get the last run date from the Settings sheet."""
+        try:
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id,
+                range="Settings!A2:B"
+            ).execute()
+            for row in result.get("values", []):
+                if len(row) >= 2 and row[0] == "last_run_date":
+                    return datetime.fromisoformat(row[1])
+        except Exception:
+            pass
+        return None
+
+    def set_last_run_date(self, dt: datetime):
+        """Save the last run date to the Settings sheet."""
+        try:
+            self.service.spreadsheets().values().update(
+                spreadsheetId=self.spreadsheet_id,
+                range="Settings!A2:B2",
+                valueInputOption="RAW",
+                body={"values": [["last_run_date", dt.isoformat()]]}
+            ).execute()
+        except Exception as e:
+            print(f"Warning: Could not save last run date: {e}")

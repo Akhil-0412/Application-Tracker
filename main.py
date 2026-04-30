@@ -28,11 +28,15 @@ from src.status_tracker import StatusTracker
 from src.config import POLLING_INTERVAL
 
 
-def process_emails(gmail: GmailClient, classifier: AIClassifier, tracker: StatusTracker, days: int = 30):
-    """Process emails from the last N days."""
-    print(f"\n[EMAIL] Fetching job application emails from the last {days} days...")
-    
-    emails = gmail.get_messages(days_back=days)
+def process_emails(gmail: GmailClient, classifier: AIClassifier, tracker: StatusTracker, days: int = 30, after_date: Optional[datetime] = None):
+    """Process emails from the last N days or since a specific date."""
+    if after_date:
+        print(f"\n[EMAIL] Fetching job application emails since {after_date.strftime('%Y-%m-%d %H:%M:%S')}...")
+        emails = gmail.get_messages(after_date=after_date)
+    else:
+        print(f"\n[EMAIL] Fetching job application emails from the last {days} days...")
+        emails = gmail.get_messages(days_back=days)
+        
     print(f"   Found {len(emails)} emails matching job application criteria")
     
     if not emails:
@@ -162,7 +166,11 @@ def main():
     if args.live:
         live_monitor(gmail, classifier, tracker, args.interval)
     else:
-        processed = process_emails(gmail, classifier, tracker, args.days)
+        last_run = sheets.get_last_run_date()
+        processed = process_emails(gmail, classifier, tracker, args.days, after_date=last_run)
+        
+        # Save current time as last run
+        sheets.set_last_run_date(datetime.now())
         
         # Show statistics
         stats = tracker.get_statistics()
