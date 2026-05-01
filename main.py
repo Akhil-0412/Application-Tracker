@@ -15,6 +15,7 @@ import time
 import sys
 import io
 from datetime import datetime, timedelta
+from typing import Optional
 
 # Fix Windows console encoding
 if sys.platform == "win32":

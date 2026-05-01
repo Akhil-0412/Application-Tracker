@@ -71,31 +71,6 @@ class StatusTracker:
             if added:
                 return True, "Created new application"
             return False, f"Failed to create application: {reason}"
-
-
-
-        # If this email is older, skip
-        if email_date_naive < existing_date:
-            return False
-
-        # Determine if we should update Company/Role
-        # If existing is generic/unknown and new is specific, update it
-        update_meta = False
-        new_company = None
-        new_role = None
-        
-        ex_company = existing_app.get("company", "Unknown")
-        ex_role = existing_app.get("role", "Unknown")
-        
-        # Heuristic: If existing starts with "Unknown" or is very short, and new is better
-        if "unknown" in ex_company.lower() and "unknown" not in email_subject.lower(): # Name comes from result, not subject
-             # actually we don't have new company passed to this method!
-             # We need to change signature of _handle_update
-             pass
-
-        # ... Wait, I can't access new company/role here without changing signature.
-        # Let's fix signature first.
-        pass
         
     def _handle_update(
         self,
