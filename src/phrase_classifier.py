@@ -45,6 +45,8 @@ class PhraseClassifier:
         "qa engineer", "test engineer", "sdet",
         "mobile developer", "ios developer", "android developer",
         "intern", "graduate", "junior", "senior", "staff", "principal", "lead",
+        "graduate scheme", "placement year", "placement student", "year in industry",
+        "apprentice", "trainee", "associate",
     ]
 
     def classify(self, email: dict) -> ClassificationResult:
@@ -136,9 +138,9 @@ class PhraseClassifier:
         """Extract company name from email."""
         # Common patterns for company names in body
         patterns = [
-            r"(?:at|with|from|here at)\s+([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)?)",
-            r"([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)?)\s+(?:team|talent|careers|recruiting)",
-            r"interest in (?:the\s+)?(?:\w+\s+)?(?:position|role)?\s*(?:at|with)\s+([A-Z][a-zA-Z0-9]+)",
+            r"(?:at|with|from|here at)\s+([A-Za-z][a-zA-Z0-9]+(?:\s+[A-Za-z][a-zA-Z0-9]+)?)",
+            r"([A-Za-z][a-zA-Z0-9]+(?:\s+[A-Za-z][a-zA-Z0-9]+)?)\s+(?:team|talent|careers|recruiting)",
+            r"interest in (?:the\s+)?(?:\w+\s+)?(?:position|role)?\s*(?:at|with)\s+([A-Za-z][a-zA-Z0-9]+)",
         ]
         
         # Extensive blacklist of generic terms often mistaken for company names
@@ -171,8 +173,8 @@ class PhraseClassifier:
         
         # Fallback: Look for "Application to [Company]" in subject
         subject_patterns = [
-            r"application\s+(?:to|for)\s+([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)?)",
-            r"your\s+(?:job\s+)?application\s+(?:at|with|to)\s+([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)?)",
+            r"application\s+(?:to|for)\s+([A-Za-z][a-zA-Z0-9]+(?:\s+[A-Za-z][a-zA-Z0-9]+)?)",
+            r"your\s+(?:job\s+)?application\s+(?:at|with|to)\s+([A-Za-z][a-zA-Z0-9]+(?:\s+[A-Za-z][a-zA-Z0-9]+)?)",
         ]
         for pattern in subject_patterns:
             match = re.search(pattern, subject, re.IGNORECASE)
@@ -206,7 +208,7 @@ class PhraseClassifier:
             r"position of\s+([A-Za-z\s\-\(\)]+?)(?:\s+at|\s+with|\.|,|\n)",
             r"for the\s+([A-Za-z\s\-\(\)]+?)\s+(?:position|role)",
             r"application for (?:the\s+)?([A-Za-z\s\-\(\)]+?)(?:\s+position|\s+role|\s+at|\.|,|\n)",
-            r"([A-Za-z\s\-]+(?:Engineer|Developer|Scientist|Analyst|Manager|Intern|Designer|Architect)[A-Za-z\s\-\(\)]*)",
+            r"([A-Za-z\s\-]+(?:Engineer|Developer|Scientist|Analyst|Manager|Intern|Designer|Architect|Scheme|Apprentice|Trainee)[A-Za-z\s\-\(\)]*)",
         ]
         
         for pattern in position_patterns:
@@ -215,12 +217,28 @@ class PhraseClassifier:
                 role = match.group(1).strip()
                 role = re.sub(r'\s+', ' ', role)
                 if 5 < len(role) < 80:
-                    # Only use if it contains a job-related word
+                    # Accept if it contains a job-related word
                     role_lower = role.lower()
                     job_words = ["engineer", "developer", "scientist", "analyst", "manager", 
-                                "intern", "designer", "architect", "lead", "senior", "junior", "graduate"]
+                                "intern", "designer", "architect", "lead", "senior", "junior",
+                                "graduate", "scheme", "placement", "apprentice", "trainee",
+                                "associate", "consultant", "coordinator", "specialist"]
                     if any(word in role_lower for word in job_words):
                         return role.title() if role.islower() else role
+        
+        # Secondary: accept role-like patterns even without strict job_words
+        # (e.g., "Graduate Scheme", "Year in Industry")
+        secondary_patterns = [
+            r"for the\s+([A-Za-z\s\-\(\)]{5,60}?)\s+(?:position|role|opportunity)",
+            r"position of\s+([A-Za-z\s\-\(\)]{5,60}?)(?:\s+at|\.|,|\n)",
+            r"application for (?:the\s+)?([A-Za-z\s\-\(\)]{5,60}?)(?:\s+at|\.|,|\n)",
+        ]
+        for pattern in secondary_patterns:
+            match = re.search(pattern, content, re.IGNORECASE)
+            if match:
+                role = re.sub(r'\s+', ' ', match.group(1).strip())
+                if 5 < len(role) < 60:
+                    return role.title() if role.islower() else role
         
         # Fallback: look for known job titles
         content_lower = content.lower()

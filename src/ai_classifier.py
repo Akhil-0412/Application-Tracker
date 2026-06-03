@@ -13,9 +13,8 @@ class ClassificationResult:
     """Result of email classification."""
     company: str
     role: str
-    status: str  # Applied, Assessment, Interview, Rejected
+    status: str  # Applied, Assessment, Interview, Offer, Rejected
     confidence: float  # 0.0 - 1.0
-    reasoning: str
     reasoning: str
     source: str  # "ai" or "phrases"
     action_link: Optional[str] = None
@@ -34,26 +33,35 @@ class AIClassifier:
 
     CLASSIFICATION_PROMPT = """Analyze this job application email and extract information.
 
-EXTRACT CAREFULLY:
-1. COMPANY: The actual company name (not email platform like Workday, RippleHire)
-2. ROLE: The EXACT job title mentioned
-3. STATUS: Based on email content
-4. ACTION_LINK: The most relevant action link from the email.
+EXISTING TRACKED APPLICATIONS (from the user's tracking sheet):
+{existing_apps}
 
-STATUS DETERMINATION:
-- Applied = application received / confirmed
-- Assessment = coding challenge / test
-- Interview = interview scheduled
-- Rejected = not moving forward
-
-EMAIL:
+EMAIL TO CLASSIFY:
 Subject: {subject}
 From: {sender}
+Sender Domain: {sender_domain}
 Body:
 {body}
 
-Return ONLY valid JSON:
-{{"company": "company name", "role": "exact job title", "status": "Applied|Assessment|Interview|Rejected", "confidence": 0.9, "reasoning": "brief reason", "action_link": "url"}}"""
+INSTRUCTIONS:
+1. If this email is a status update (rejection, interview invite, assessment, offer) for one
+   of the EXISTING APPLICATIONS listed above, return the EXACT company and role from that
+   existing application. Set "matched_existing" to true.
+2. If this is a NEW application confirmation (not matching any existing application), extract
+   the company and role directly from the email. Set "matched_existing" to false.
+3. If the email doesn't mention a company name, use the sender domain "{sender_domain}" as a hint
+   and check if it matches any existing application's company.
+4. For STATUS, choose exactly one of: Applied | Assessment | Interview | Offer | Rejected
+
+STATUS DETERMINATION GUIDE:
+- Applied = application received / confirmed / submitted
+- Assessment = coding challenge / test / take-home assignment
+- Interview = interview scheduled / phone screen / video call
+- Offer = job offer extended / congratulations on being selected
+- Rejected = not moving forward / unfortunately / regret / another candidate
+
+Return ONLY valid JSON (no markdown, no explanation):
+{{"company": "exact company name", "role": "exact job title", "status": "Applied|Assessment|Interview|Offer|Rejected", "confidence": 0.9, "reasoning": "brief reason for classification", "matched_existing": true, "matched_index": null}}"""
 
     def __init__(self):
         self.client = None
@@ -71,10 +79,10 @@ Return ONLY valid JSON:
             print(f"Failed to import Groq client: {e}")
             self.client = None
 
-    def classify(self, email: dict) -> ClassificationResult:
+    def classify(self, email: dict, existing_apps: list = None) -> ClassificationResult:
         if self.client:
             try:
-                result = self._ai_classify(email)
+                result = self._ai_classify(email, existing_apps=existing_apps)
                 if result:
                     return result
             except Exception as e:
@@ -82,15 +90,28 @@ Return ONLY valid JSON:
 
         return self._phrase_classify(email)
 
-    def _ai_classify(self, email: dict) -> Optional[ClassificationResult]:
-        body = email.get("body", "")[:3000]
+    def _ai_classify(self, email: dict, existing_apps: list = None) -> Optional[ClassificationResult]:
+        body = email.get("body", "")[:5000]
         subject = email.get("subject", "")
         sender = email.get("from", "")
+        sender_domain = email.get("sender_domain", "")
+
+        # Format existing applications for the prompt
+        if existing_apps:
+            # Limit to last 90 days and max 30 entries to control token usage
+            apps_text = "\n".join(
+                f"  - Row {i+1}: {app.get('company', '?')} | {app.get('role', '?')} | Status: {app.get('status', '?')} | Applied: {app.get('applied_date', '?')}"
+                for i, app in enumerate(existing_apps[:30])
+            )
+        else:
+            apps_text = "  (No existing applications available)"
 
         prompt = self.CLASSIFICATION_PROMPT.format(
             subject=subject,
             sender=sender,
-            body=body
+            sender_domain=sender_domain,
+            body=body,
+            existing_apps=apps_text
         )
 
         for model in self.MODELS:
@@ -98,11 +119,11 @@ Return ONLY valid JSON:
                 response = self.client.chat.completions.create(
                     model=model,
                     messages=[
-                        {"role": "system", "content": "Extract job application details. Return ONLY valid JSON."},
+                        {"role": "system", "content": "You are a job application email classifier. Extract job application details and match to existing tracked applications when possible. Return ONLY valid JSON."},
                         {"role": "user", "content": prompt},
                     ],
                     temperature=0.0,
-                    max_tokens=300,
+                    max_tokens=400,
                 )
 
                 content = response.choices[0].message.content
@@ -116,7 +137,6 @@ Return ONLY valid JSON:
                 return self._build_result(data, email, model)
 
             except Exception as e:
-                # Silent failover is intentional
                 print(f"[Groq] Model failed: {model} → {e}")
                 continue
 
@@ -143,7 +163,7 @@ Return ONLY valid JSON:
         if not company or company.lower() in {"unknown", "n/a", "none", ""}:
             company = email.get("sender_domain", "Unknown")
 
-        if status not in {"Applied", "Assessment", "Interview", "Rejected"}:
+        if status not in {"Applied", "Assessment", "Interview", "Offer", "Rejected"}:
             status = "Applied"
 
         if not role or role.lower() in {"unknown", "n/a", "none", ""}:

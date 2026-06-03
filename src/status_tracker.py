@@ -1,4 +1,8 @@
-"""Status tracker for managing application progression."""
+"""Status tracker for managing application progression.
+
+Integrates the CorrelationEngine to resolve vague emails (especially rejections)
+to existing tracked applications, preventing orphan 'Unknown' rows.
+"""
 
 from datetime import datetime
 from typing import Optional
@@ -19,8 +23,10 @@ class StatusTracker:
         "Rejected": 0,  # Rejected is final but lower priority for updates (handled specially)
     }
 
-    def __init__(self, sheets_client: SheetsClient):
+    def __init__(self, sheets_client: SheetsClient, correlation_engine=None, thread_store=None):
         self.sheets = sheets_client
+        self.correlation_engine = correlation_engine
+        self.thread_store = thread_store
         self._cache = {}  # Cache of known applications
 
     def process_classification(
@@ -29,7 +35,8 @@ class StatusTracker:
         email_date: datetime,
         email_subject: str,
         detection_reason: str = "",
-        force_update: bool = False
+        force_update: bool = False,
+        email: dict = None,
     ) -> tuple[bool, str]:
         """
         Process a classification result and update the sheet if needed.
@@ -39,6 +46,8 @@ class StatusTracker:
             email_date: Date of the email
             email_subject: Subject line of the email
             detection_reason: Why this email was detected as an application
+            force_update: If True, skip date-based deduplication
+            email: The full email dict (for correlation — contains thread_id, sender_domain, etc.)
 
         Returns:
             (success, reason)
@@ -48,17 +57,67 @@ class StatusTracker:
         role = result.role
         status = result.status
         action_link = result.action_link or ""
+        thread_id = email.get("thread_id", "") if email else ""
 
+        # ─── CORRELATION LOGIC ───────────────────────────────────────────
+        # If company or role is unknown/vague, try to correlate to an
+        # existing application using multiple signals before creating
+        # a new row.
+        is_unknown_company = company.lower() in ("unknown", "unknown company", "")
+        is_unknown_role = role.lower() in ("unknown", "unknown position", "")
+
+        correlated = False
+        if (is_unknown_company or is_unknown_role) and self.correlation_engine and email:
+            match = self.correlation_engine.correlate(
+                email=email,
+                classification_company=company,
+                classification_role=role,
+            )
+            if match and match.confidence >= 0.6:
+                # Override with correlated values
+                company = match.company
+                role = match.role
+                correlated = True
+                detection_reason = (
+                    f"Correlated via {match.signal} (conf={match.confidence:.2f}): "
+                    f"{match.reasoning}"
+                )
+                print(f"      [CORRELATED] {match.signal}: {company} | {role} (conf={match.confidence:.2f})")
+
+                # Directly update the matched row
+                return self._handle_update(
+                    row_index=match.row_index,
+                    existing_app={"company": company, "role": role, "status": ""},
+                    new_status=status,
+                    email_date=email_date,
+                    email_subject=email_subject,
+                    new_company=company if is_unknown_company else None,
+                    new_role=role if is_unknown_role else None,
+                    action_link=action_link,
+                    force_update=force_update,
+                )
+
+        # ─── STANDARD LOGIC (unchanged) ──────────────────────────────────
         # Check if this is a new application or update
         existing = self.sheets.find_application(company, role)
 
         if existing:
             row_index, app = existing
-            return self._handle_update(
+            success, reason = self._handle_update(
                 row_index, app, status, email_date, email_subject, company, role, action_link, force_update
             )
+            # Register thread ID mapping for successful updates
+            if success and thread_id and self.thread_store:
+                self.thread_store.register(thread_id, company, role, row_index)
+            return success, reason
         else:
-            # New application
+            # New application — check if it's an unmatched rejection
+            if (is_unknown_company and is_unknown_role) and status == "Rejected":
+                # Flag as unmatched rather than creating an orphan row
+                print(f"      [WARN] ⚠️ Unmatched rejection: '{email_subject}' — skipping orphan row")
+                return False, "⚠️ Unmatched rejection (no correlation found, skipped orphan row)"
+
+            # Create new application
             added, reason = self.sheets.add_application(
                 company=company,
                 role=role,
@@ -66,9 +125,18 @@ class StatusTracker:
                 applied_date=email_date,
                 email_subject=email_subject,
                 detection_reason=detection_reason,
-                action_link=action_link
+                action_link=action_link,
+                thread_id=thread_id,
             )
             if added:
+                # Register thread ID for the new application
+                if thread_id and self.thread_store:
+                    # Parse the row number from the reason string
+                    try:
+                        row_num = int(reason.split("row ")[1])
+                        self.thread_store.register(thread_id, company, role, row_num)
+                    except (IndexError, ValueError):
+                        pass
                 return True, "Created new application"
             return False, f"Failed to create application: {reason}"
         
@@ -137,6 +205,18 @@ class StatusTracker:
             )
             return success, "Marked as Rejected"
 
+
+        if new_status == "Offer":
+            success = self.sheets.update_application(
+                row_index=row_index,
+                status="Offer",
+                last_updated=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                email_subject=email_subject,
+                company=updated_company,
+                role=updated_role,
+                action_link=action_link
+            )
+            return success, "Marked as Offer"
 
 
         # Otherwise, only upgrade status

@@ -297,7 +297,7 @@ class SheetsClient:
         try:
             result = self.service.spreadsheets().values().get(
                 spreadsheetId=self.spreadsheet_id,
-                range="Applications!A2:F"
+                range="Applications!A2:I"
             ).execute()
             values = result.get("values", [])
 
@@ -314,6 +314,7 @@ class SheetsClient:
                     "email_subject": row[5],
                     "detection_reason": row[6] if len(row) > 6 else "",
                     "action_link": row[7] if len(row) > 7 else "",
+                    "thread_id": row[8] if len(row) > 8 else "",
                 })
 
             return applications
@@ -352,10 +353,9 @@ class SheetsClient:
         applied_date: datetime,
         email_subject: str = "",
         detection_reason: str = "",
-        action_link: str = ""
+        action_link: str = "",
+        thread_id: str = ""
     ) -> tuple[bool, str]:
-
-
         """Add a new application or update existing one."""
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
         
@@ -371,24 +371,20 @@ class SheetsClient:
 
         if existing:
             row_index, app = existing
-            row_index, app = existing
             return self.update_application(
                 row_index, status, now, email_subject, action_link=action_link
             )
 
-
         # Add new row using explicit update (append is flaky)
         try:
             # Get current application count to find next row
-            # This is expensive but reliable
             apps = self.get_all_applications()
             next_row = len(apps) + 2
             
-            # Use update instead of append
-            # Fixed range to A:H (8 columns) to match data length
+            # Write to A:I (9 columns, including Thread ID)
             self.service.spreadsheets().values().update(
                 spreadsheetId=self.spreadsheet_id,
-                range=f"Applications!A{next_row}:H{next_row}",
+                range=f"Applications!A{next_row}:I{next_row}",
                 valueInputOption="RAW",
                 body={"values": [[
                     company,
@@ -398,9 +394,9 @@ class SheetsClient:
                     now,
                     email_subject,
                     detection_reason,
-                    action_link
+                    action_link,
+                    thread_id
                 ]]}
-
             ).execute()
             
             # Apply conditional formatting color manually for the new row
@@ -445,11 +441,16 @@ class SheetsClient:
                 }
             ]
             
-            # If company/role provided, update A:B
-            if company and role:
+            # Update company and/or role individually (don't require both)
+            if company:
                 data.append({
-                    "range": f"Applications!A{row_index}:B{row_index}",
-                    "values": [[company, role]]
+                    "range": f"Applications!A{row_index}",
+                    "values": [[company]]
+                })
+            if role:
+                data.append({
+                    "range": f"Applications!B{row_index}",
+                    "values": [[role]]
                 })
 
             self.service.spreadsheets().values().batchUpdate(

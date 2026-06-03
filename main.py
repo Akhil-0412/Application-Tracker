@@ -26,10 +26,19 @@ from src.gmail_client import GmailClient
 from src.sheets_client import SheetsClient
 from src.ai_classifier import AIClassifier
 from src.status_tracker import StatusTracker
+from src.thread_store import ThreadStore
+from src.correlation_engine import CorrelationEngine
 from src.config import POLLING_INTERVAL
 
 
-def process_emails(gmail: GmailClient, classifier: AIClassifier, tracker: StatusTracker, days: int = 30, after_date: Optional[datetime] = None):
+def process_emails(
+    gmail: GmailClient,
+    classifier: AIClassifier,
+    tracker: StatusTracker,
+    sheets: SheetsClient,
+    days: int = 30,
+    after_date: Optional[datetime] = None
+):
     """Process emails from the last N days or since a specific date."""
     if after_date:
         print(f"\n[EMAIL] Fetching job application emails since {after_date.strftime('%Y-%m-%d %H:%M:%S')}...")
@@ -44,6 +53,9 @@ def process_emails(gmail: GmailClient, classifier: AIClassifier, tracker: Status
         print("   No new emails to process")
         return 0
     
+    # Load existing applications once for AI context
+    existing_apps = sheets.get_all_applications()
+    
     processed = 0
     for email in emails:
         if not email:
@@ -51,16 +63,17 @@ def process_emails(gmail: GmailClient, classifier: AIClassifier, tracker: Status
             
         try:
             print(f"   Processing: {email.get('subject')} ({email.get('date')})")
-            # Classify the email
-            result = classifier.classify(email)
+            # Classify the email — pass existing apps for AI correlation
+            result = classifier.classify(email, existing_apps=existing_apps)
             print(f"      -> Classified: {result.company} | {result.role} | {result.status}")
             
-            # Track the application
+            # Track the application — pass the full email for correlation
             updated, reason = tracker.process_classification(
                 result=result,
                 email_date=email.get("date", datetime.now()),
                 email_subject=email.get("subject", ""),
-                detection_reason=email.get("detection_reason", "")
+                detection_reason=email.get("detection_reason", ""),
+                email=email,
             )
             print(f"      -> Tracker update: {updated} ({reason})")
 
@@ -70,6 +83,7 @@ def process_emails(gmail: GmailClient, classifier: AIClassifier, tracker: Status
                     "Applied": "[APPLIED]",
                     "Assessment": "[ASSESSMENT]",
                     "Interview": "[INTERVIEW]",
+                    "Offer": "[OFFER]",
                     "Rejected": "[REJECTED]"
                 }.get(result.status, "[EMAIL]")
                 
@@ -83,7 +97,13 @@ def process_emails(gmail: GmailClient, classifier: AIClassifier, tracker: Status
     return processed
 
 
-def live_monitor(gmail: GmailClient, classifier: AIClassifier, tracker: StatusTracker, interval: int):
+def live_monitor(
+    gmail: GmailClient,
+    classifier: AIClassifier,
+    tracker: StatusTracker,
+    sheets: SheetsClient,
+    interval: int
+):
     """Run in live monitoring mode."""
     print(f"\n[LIVE] Starting live monitoring (polling every {interval} seconds)")
     print("   Press Ctrl+C to stop\n")
@@ -96,17 +116,21 @@ def live_monitor(gmail: GmailClient, classifier: AIClassifier, tracker: StatusTr
             emails = gmail.get_messages(after_date=last_check, max_results=20)
             
             if emails:
+                # Load existing applications for AI context
+                existing_apps = sheets.get_all_applications()
+                
                 for email in emails:
                     if not email:
                         continue
                     
                     try:
-                        result = classifier.classify(email)
+                        result = classifier.classify(email, existing_apps=existing_apps)
                         updated, reason = tracker.process_classification(
                             result=result,
                             email_date=email.get("date", datetime.now()),
                             email_subject=email.get("subject", ""),
-                            detection_reason=email.get("detection_reason", "")
+                            detection_reason=email.get("detection_reason", ""),
+                            email=email,
                         )
                         
                         if updated:
@@ -161,14 +185,28 @@ def main():
     else:
         print("   [INFO] Running in phrase-matching mode (no GROQ_API_KEY)")
     
-    # Initialize tracker
-    tracker = StatusTracker(sheets)
+    # Initialize correlation components
+    print("\n[CORRELATION] Initializing correlation engine...")
+    thread_store = ThreadStore(sheets)
+    correlation_engine = CorrelationEngine(
+        sheets_client=sheets,
+        thread_store=thread_store,
+        ai_classifier=classifier,
+    )
+    print("   [OK] Correlation engine ready (thread + domain + AI signals)")
+    
+    # Initialize tracker with correlation
+    tracker = StatusTracker(
+        sheets_client=sheets,
+        correlation_engine=correlation_engine,
+        thread_store=thread_store,
+    )
     
     if args.live:
-        live_monitor(gmail, classifier, tracker, args.interval)
+        live_monitor(gmail, classifier, tracker, sheets, args.interval)
     else:
         last_run = sheets.get_last_run_date()
-        processed = process_emails(gmail, classifier, tracker, args.days, after_date=last_run)
+        processed = process_emails(gmail, classifier, tracker, sheets, args.days, after_date=last_run)
         
         # Save current time as last run
         sheets.set_last_run_date(datetime.now())
@@ -180,6 +218,7 @@ def main():
         print(f"   Applied: {stats['Applied']}")
         print(f"   Assessment: {stats['Assessment']}")
         print(f"   Interview: {stats['Interview']}")
+        print(f"   Offer: {stats['Offer']}")
         print(f"   Rejected: {stats['Rejected']}")
         
         print(f"\n[DONE] Processed {processed} new/updated applications")

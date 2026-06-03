@@ -49,6 +49,7 @@ SHEET_HEADERS = [
     "Email Subject",
     "Detection Reason",
     "Action Link",
+    "Thread ID",
 ]
 
 # Senders to ALWAYS IGNORE (marketing/alerts, never job apps)
@@ -188,11 +189,41 @@ POSITIVE_PHRASES = [
     "about your application",
     "your application for",
     "your candidacy",
+
+    # Additional rejection signals
+    "after careful consideration",
+    "after careful review",
+    "gone with another candidate",
+    "other candidates whose",
+    "not be taking your application further",
+    "will not be progressing",
+    "unable to offer you",
+    "we wish you all the best",
+    "not successful",
+    "regret to advise",
+
+    # Offer and progression signals
+    "congratulations",
+    "delighted to offer",
+    "we'd like to offer",
+    "shortlisted",
+    "next stage",
+    "progressed to",
+    "moved forward",
 ]
 
 
-# Job application email query - BROAD: Keywords in subject, exclude user's own emails
-JOB_EMAIL_QUERY = 'subject:(application OR applied OR interview OR assessment OR position OR role OR confirmed OR received OR resume OR thank OR opportunity OR update OR unfortunately OR regret OR "not to progress" OR "status update") -from:me'
+# Job application email query - BROAD: Keywords in subject + ATS sender domains
+JOB_EMAIL_QUERY = (
+    '('
+    'subject:(application OR applied OR interview OR assessment OR position OR role '
+    'OR confirmed OR received OR resume OR thank OR opportunity OR update '
+    'OR unfortunately OR regret OR "not to progress" OR "status update" '
+    'OR rejected OR congratulations OR shortlisted OR proceeding OR offer OR candidate) '
+    'OR from:(workday OR greenhouse OR lever OR icims OR smartrecruiters OR jobvite '
+    'OR ashby OR breezy OR ripplehire OR taleo)'
+    ') -from:me'
+)
 
 # Clean up the query
 JOB_EMAIL_QUERY = " ".join(JOB_EMAIL_QUERY.split())

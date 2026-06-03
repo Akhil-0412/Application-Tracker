@@ -210,11 +210,27 @@ def process_emails():
     try:
         if not GmailClient:
             return jsonify({"error": "Modules not loaded"}), 500
+        
+        # Import correlation modules
+        from src.thread_store import ThreadStore
+        from src.correlation_engine import CorrelationEngine
             
         gmail = GmailClient()
         sheets = SheetsClient()
         classifier = AIClassifier()
-        tracker = StatusTracker(sheets)
+        
+        # Initialize correlation
+        thread_store = ThreadStore(sheets)
+        correlation_engine = CorrelationEngine(
+            sheets_client=sheets,
+            thread_store=thread_store,
+            ai_classifier=classifier,
+        )
+        tracker = StatusTracker(
+            sheets_client=sheets,
+            correlation_engine=correlation_engine,
+            thread_store=thread_store,
+        )
         
         # 3. Fetch & Process (Limit to 1 day and 20 emails to avoid timeout)
         # Vercel functions have 10s (Hobby) or 60s (Pro) limit
@@ -235,6 +251,8 @@ def process_emails():
             emails = gmail.get_messages(days_back=days_back, max_results=max_emails)
             skipped = []
 
+        # Load existing applications once for AI context
+        existing_apps = sheets.get_all_applications()
         
         processed_count = 0
         details = []
@@ -243,16 +261,17 @@ def process_emails():
             if not email: continue
             
             try:
-                # Classify
-                result = classifier.classify(email)
+                # Classify with existing apps context
+                result = classifier.classify(email, existing_apps=existing_apps)
                 
-                # Track
+                # Track with full email for correlation
                 updated, reason = tracker.process_classification(
                     result=result,
                     email_date=email.get("date", datetime.now()),
                     email_subject=email.get("subject", ""),
                     detection_reason=email.get("detection_reason", ""),
-                    force_update=request.args.get("force") == "true"
+                    force_update=request.args.get("force") == "true",
+                    email=email,
                 )
                 
                 if updated:
@@ -336,7 +355,7 @@ def debug():
         tpl_dir = project_root / "dashboard" / "templates"
         files.append(f"Templates ({tpl_dir}): {os.listdir(tpl_dir)}")
     except Exception as e:
-        files.append(f"Error listing templates: {window.e}")
+        files.append(f"Error listing templates: {e}")
 
     return jsonify({
         "files": files,

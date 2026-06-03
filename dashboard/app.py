@@ -13,20 +13,35 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from flask import Flask, render_template, jsonify
 from src.sheets_client import SheetsClient
 from src.status_tracker import StatusTracker
+from src.thread_store import ThreadStore
+from src.correlation_engine import CorrelationEngine
+from src.ai_classifier import AIClassifier
 
 app = Flask(__name__)
 
 # Initialize clients once
 sheets = None
 tracker = None
+classifier_global = None
 
 
 def get_clients():
     """Lazy initialization of clients."""
-    global sheets, tracker
+    global sheets, tracker, classifier_global
     if sheets is None:
         sheets = SheetsClient()
-        tracker = StatusTracker(sheets)
+        classifier_global = AIClassifier()
+        thread_store = ThreadStore(sheets)
+        correlation_engine = CorrelationEngine(
+            sheets_client=sheets,
+            thread_store=thread_store,
+            ai_classifier=classifier_global,
+        )
+        tracker = StatusTracker(
+            sheets_client=sheets,
+            correlation_engine=correlation_engine,
+            thread_store=thread_store,
+        )
     return sheets, tracker
 
 
@@ -56,27 +71,28 @@ def api_stats():
 def api_refresh():
     """Trigger a manual refresh (fetch new emails)."""
     from src.gmail_client import GmailClient
-    from src.ai_classifier import AIClassifier
     from datetime import datetime, timedelta
     
     sheets, tracker = get_clients()
     gmail = GmailClient()
-    classifier = AIClassifier()
+    classifier = classifier_global or AIClassifier()
     
     # Fetch emails from last 24 hours
     emails = gmail.get_messages(days_back=1)
+    existing_apps = sheets.get_all_applications()
     processed = 0
     
     for email in emails:
         if not email:
             continue
         try:
-            result = classifier.classify(email)
-            updated = tracker.process_classification(
+            result = classifier.classify(email, existing_apps=existing_apps)
+            updated, reason = tracker.process_classification(
                 result=result,
                 email_date=email.get("date", datetime.now()),
                 email_subject=email.get("subject", ""),
-                detection_reason=email.get("detection_reason", "")
+                detection_reason=email.get("detection_reason", ""),
+                email=email,
             )
             if updated:
                 processed += 1

@@ -59,7 +59,8 @@ class GmailClient:
 
     def _check_email(self, sender_email: str, subject: str, body: str = "") -> tuple[bool, str]:
         """
-        Smart filtering logic that returns (should_keep, detection_reason).
+        Scoring-based filter that returns (should_keep, detection_reason).
+        Emails need a score >= 1 to be kept (at least one positive signal).
         
         Returns:
             (True, reason) if email should be KEPT
@@ -75,22 +76,45 @@ class GmailClient:
             if ignored in sender_lower:
                 return (False, f"Blocked sender: {ignored}")
         
-        # Check negative subjects
+        # Check negative subjects — but allow override by positive signals
+        blocked_by_negative = None
         for phrase in NEGATIVE_SUBJECTS:
             if phrase in subject_lower:
-                # Check if a positive phrase overrides
-                for pos_phrase in POSITIVE_PHRASES:
-                    if pos_phrase in combined:
-                        return (True, f"Kept: '{pos_phrase}' (overrode '{phrase}')")
-                return (False, f"Blocked subject: {phrase}")
+                blocked_by_negative = phrase
+                break
         
-        # Check for POSITIVE phrases
+        # Score positive signals
+        score = 0
+        matched_phrases = []
+        
         for phrase in POSITIVE_PHRASES:
             if phrase in combined:
-                return (True, f"Matched: {phrase}")
+                score += 1
+                matched_phrases.append(phrase)
         
-        # Default: BLOCK if no positive signal found (strict filtering)
-        return (False, "Blocked: no positive job signal")
+        # ATS domain bonus: if sender is from a known ATS/recruiting platform
+        ats_domains = [
+            "workday", "greenhouse", "lever", "icims", "smartrecruiters",
+            "jobvite", "ashby", "breezy", "ripplehire", "taleo",
+            "successfactors", "avature", "myworkday",
+        ]
+        for ats in ats_domains:
+            if ats in sender_lower:
+                score += 1
+                matched_phrases.append(f"ATS sender: {ats}")
+                break
+        
+        # Decision logic
+        if score >= 1:
+            reason = f"Score={score}, matched: {', '.join(matched_phrases[:3])}"
+            if blocked_by_negative:
+                reason += f" (overrode negative: '{blocked_by_negative}')"
+            return (True, reason)
+        
+        if blocked_by_negative:
+            return (False, f"Blocked subject: {blocked_by_negative}")
+        
+        return (False, f"Blocked: no positive job signal (score={score})")
 
 
     def get_messages(
@@ -186,6 +210,7 @@ class GmailClient:
 
             return {
                 "id": message_id,
+                "thread_id": message.get("threadId", ""),
                 "subject": header_dict.get("subject", ""),
                 "from": from_header,
                 "sender_email": sender_email,
@@ -204,6 +229,7 @@ class GmailClient:
     def _extract_body_and_links(self, payload: dict) -> tuple[str, list[str]]:
         """
         Robustly extract text and ACTION LINKS from HTML/plain emails.
+        Uses recursive MIME part walking to handle nested multipart structures.
         Returns: (clean_text, list_of_urls)
         """
         def decode_part(part):
@@ -214,6 +240,14 @@ class GmailClient:
                 return base64.b64decode(data).decode('utf-8', errors='ignore')
             except Exception:
                 return ""
+        
+        def walk_parts(payload):
+            """Recursively walk MIME parts to find all leaf parts."""
+            if 'parts' in payload:
+                for part in payload['parts']:
+                    yield from walk_parts(part)
+            else:
+                yield payload
         
         text = ""
         links = []
@@ -235,7 +269,7 @@ class GmailClient:
                         "view application", "check status", "accept offer", "sign offer"
                     ]
                     
-                    # URL patterns for action links (when text is generic/missing)
+                    # URL patterns for action links
                     url_patterns = [
                         "hackerrank.com/test/",
                         "hackerrank.com/tests/",
@@ -252,29 +286,27 @@ class GmailClient:
                 pass
             return found_links
 
-        # Try parts first
-        if 'parts' in payload:
-            for part in payload['parts']:
-                mime = part.get('mimeType', '')
-                if mime == 'text/plain':
-                    text += decode_part(part) + "\n"
-                elif mime == 'text/html':
-                    html = decode_part(part)
-                    if html:
-                        # Extract links BEFORE stripping
-                        links.extend(extract_action_links(html))
-                        
-                        # Strip HTML tags + clean whitespace
-                        try:
-                            soup = BeautifulSoup(html, 'html.parser')
-                            text += ' '.join(soup.get_text().split()) + "\n"
-                        except Exception:
-                            text += self._html_to_text(html) + "\n"
+        # Recursively walk all MIME parts
+        for part in walk_parts(payload):
+            mime = part.get('mimeType', '')
+            if mime == 'text/plain' and not text:
+                text += decode_part(part) + "\n"
+            elif mime == 'text/html':
+                html = decode_part(part)
+                if html:
+                    # Extract links BEFORE stripping
+                    links.extend(extract_action_links(html))
+                    
+                    # Strip HTML tags + clean whitespace
+                    try:
+                        soup = BeautifulSoup(html, 'html.parser')
+                        text += ' '.join(soup.get_text().split()) + "\n"
+                    except Exception:
+                        text += self._html_to_text(html) + "\n"
         
         # Fallback to body if no parts or empty text
-        if not text and 'body' in payload and 'data' in payload['body']:
+        if not text and 'body' in payload and 'data' in payload.get('body', {}):
             content = decode_part(payload)
-            # If it looks like HTML, clean it
             if '<html' in content.lower() or '<body' in content.lower() or '<div' in content.lower():
                 links.extend(extract_action_links(content))
                 try:
@@ -319,9 +351,15 @@ class GmailClient:
         return ""
 
     def _extract_domain(self, email: str) -> str:
-        """Extract domain from email address."""
+        """Extract meaningful company name from email domain."""
         if "@" in email:
-            return email.split("@")[1].split(".")[0].title()
+            domain = email.split("@")[1]
+            parts = domain.split(".")
+            # Filter out generic TLDs and subdomains
+            generic = {"com", "co", "uk", "org", "net", "io", "mail", "email",
+                       "notifications", "info", "us", "de", "fr", "in", "au"}
+            meaningful = [p for p in parts if p.lower() not in generic]
+            return meaningful[0].title() if meaningful else parts[0].title()
         return ""
 
     def get_history_id(self) -> str:
