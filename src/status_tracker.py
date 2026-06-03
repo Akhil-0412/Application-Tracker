@@ -95,6 +95,7 @@ class StatusTracker:
                     new_role=role if is_unknown_role else None,
                     action_link=action_link,
                     force_update=force_update,
+                    thread_id=thread_id,
                 )
 
         # ─── STANDARD LOGIC (unchanged) ──────────────────────────────────
@@ -104,7 +105,7 @@ class StatusTracker:
         if existing:
             row_index, app = existing
             success, reason = self._handle_update(
-                row_index, app, status, email_date, email_subject, company, role, action_link, force_update
+                row_index, app, status, email_date, email_subject, company, role, action_link, force_update, thread_id=thread_id
             )
             # Register thread ID mapping for successful updates
             if success and thread_id and self.thread_store:
@@ -147,11 +148,11 @@ class StatusTracker:
         new_status: str,
         email_date: datetime,
         email_subject: str,
-
         new_company: str = None, 
         new_role: str = None,
         action_link: str = "",
-        force_update: bool = False
+        force_update: bool = False,
+        thread_id: str = ""
     ) -> tuple[bool, str]:
 
 
@@ -197,11 +198,11 @@ class StatusTracker:
                 row_index=row_index,
                 status="Rejected",
                 last_updated=datetime.now().strftime("%Y-%m-%d %H:%M"),
-
                 email_subject=email_subject,
                 company=updated_company,
                 role=updated_role,
-                action_link=action_link
+                action_link=action_link,
+                thread_id=thread_id
             )
             return success, "Marked as Rejected"
 
@@ -214,7 +215,8 @@ class StatusTracker:
                 email_subject=email_subject,
                 company=updated_company,
                 role=updated_role,
-                action_link=action_link
+                action_link=action_link,
+                thread_id=thread_id
             )
             return success, "Marked as Offer"
 
@@ -231,7 +233,8 @@ class StatusTracker:
                 email_subject=email_subject,
                 company=updated_company,
                 role=updated_role,
-                action_link=action_link
+                action_link=action_link,
+                thread_id=thread_id
             )
             return success, f"Updated status to {target_status}"
 

@@ -418,7 +418,8 @@ class SheetsClient:
         email_subject: str = "",
         company: str = None,
         role: str = None,
-        action_link: str = ""
+        action_link: str = "",
+        thread_id: str = ""
     ) -> tuple[bool, str]:
         """Update an existing application row."""
         try:
@@ -433,13 +434,25 @@ class SheetsClient:
                 {
                     "range": f"Applications!E{row_index}:F{row_index}",
                     "values": [[last_updated, email_subject]]
-                },
-                # Action Link (Col H)
-                {
-                    "range": f"Applications!H{row_index}",
-                    "values": [[action_link]]
                 }
             ]
+            
+            # Selectively add action_link and thread_id to avoid overwriting with empty
+            if action_link and thread_id:
+                data.append({
+                    "range": f"Applications!H{row_index}:I{row_index}",
+                    "values": [[action_link, thread_id]]
+                })
+            elif action_link:
+                data.append({
+                    "range": f"Applications!H{row_index}",
+                    "values": [[action_link]]
+                })
+            elif thread_id:
+                data.append({
+                    "range": f"Applications!I{row_index}",
+                    "values": [[thread_id]]
+                })
             
             # Update company and/or role individually (don't require both)
             if company:
