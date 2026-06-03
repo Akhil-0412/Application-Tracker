@@ -85,14 +85,17 @@ def get_applications_from_sheet():
     try:
         result = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id,
-            range="Applications!A:G"
+            range="Applications!A:I"
         ).execute()
         
         values = result.get("values", [])
         if len(values) <= 1:  # No data or only headers
             return []
         
-        headers = ["company", "role", "status", "applied_date", "last_updated", "email_subject", "detection_reason"]
+        headers = [
+            "company", "role", "status", "applied_date", "last_updated", 
+            "email_subject", "detection_reason", "action_link", "thread_id"
+        ]
         applications = []
         
         for row in values[1:]:  # Skip header row

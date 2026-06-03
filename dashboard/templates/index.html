@@ -167,9 +167,12 @@
                     </div>
                 </div>
 
-                <div class="inspector-actions">
-                    <button class="action-btn secondary">✏️ Edit</button>
-                    <button class="action-btn secondary">🚫 Not an application</button>
+                <div class="inspector-actions" style="flex-direction: column; gap: 8px;">
+                    <a id="inspectorGmailLink" href="#" target="_blank" class="action-btn" style="display: none; text-decoration: none; text-align: center; justify-content: center; align-items: center; background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); color: var(--bg-primary); font-weight: 700; border-color: var(--accent-primary); width: 100%;">📬 View Email in Gmail</a>
+                    <div style="display: flex; gap: 8px; width: 100%;">
+                        <button class="action-btn secondary" style="flex: 1;">✏️ Edit</button>
+                        <button class="action-btn secondary" style="flex: 1;">🚫 Not an application</button>
+                    </div>
                 </div>
             </div>
         </aside>
@@ -285,6 +288,15 @@
             document.getElementById('inspectorStatus').className = `inspector-status status-${(app.status || 'applied').toLowerCase()}`;
             document.getElementById('detectionReason').textContent = app.detection_reason || 'No detection reason available';
             document.getElementById('emailSubject').textContent = app.email_subject || 'No email subject';
+
+            // Update Gmail Link
+            const gmailLink = document.getElementById('inspectorGmailLink');
+            if (app.thread_id) {
+                gmailLink.href = `https://mail.google.com/mail/u/0/#all/${app.thread_id}`;
+                gmailLink.style.display = 'flex';
+            } else {
+                gmailLink.style.display = 'none';
+            }
 
             // Add entrance animation
             document.getElementById('inspectorContent').classList.add('animate-in');
