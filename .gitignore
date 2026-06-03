@@ -35,3 +35,7 @@ Thumbs.db
 .vercel/
 .vercel
 .env*.local
+
+# Debug files
+temp_groq.txt
+fix_env.py
