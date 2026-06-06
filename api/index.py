@@ -203,6 +203,72 @@ def api_stats():
     return jsonify(get_stats_from_applications(applications))
 
 
+@app.route("/api/email/<thread_id>")
+def api_email_html(thread_id):
+    """API endpoint to get the HTML content of an email thread."""
+    setup_oauth_credentials()
+    if not GmailClient:
+        return "<p>Error: Modules not loaded</p>"
+    try:
+        gmail = GmailClient()
+        return gmail.get_thread_html(thread_id)
+    except Exception as e:
+        return f"<p>Error: {str(e)}</p>"
+
+
+@app.route("/api/applications/<int:row_index>/status", methods=["POST"])
+def api_update_status(row_index):
+    """API endpoint to manually override application status."""
+    setup_oauth_credentials()
+    data = request.json
+    new_status = data.get("status")
+    if not new_status:
+        return jsonify({"error": "Missing status"}), 400
+        
+    if not SheetsClient:
+        return jsonify({"error": "Modules not loaded"}), 500
+        
+    try:
+        sheets = SheetsClient()
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        success, msg = sheets.update_application(
+            row_index=row_index,
+            status=new_status,
+            last_updated=now
+        )
+        if success:
+            return jsonify({"success": True, "message": msg})
+        else:
+            return jsonify({"error": msg}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/applications/<int:row_index>/junk", methods=["POST"])
+def api_junk_application(row_index):
+    """API endpoint to mark an application as junk and delete it from sheets."""
+    setup_oauth_credentials()
+    data = request.json
+    thread_id = data.get("thread_id", "")
+    sender_email = data.get("sender_email", "")
+    
+    try:
+        from src.junk_filter import JunkFilter
+        if thread_id or sender_email:
+            # Note: Junk memory is file-based, on Vercel this will only persist 
+            # for the duration of the lambda execution unless stored externally.
+            JunkFilter.add_junk(thread_id, sender_email)
+            
+        if SheetsClient:
+            sheets = SheetsClient()
+            sheets.delete_application(row_index)
+            
+        return jsonify({"success": True, "message": "Marked as junk and completely removed from sheet"})
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+
+
 @app.route("/api/process")
 def process_emails():
     """Trigger email processing (Cron job entry point)."""
