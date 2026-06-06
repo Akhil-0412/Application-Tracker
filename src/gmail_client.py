@@ -57,7 +57,7 @@ class GmailClient:
 
         self.service = build("gmail", "v1", credentials=self.creds)
 
-    def _check_email(self, sender_email: str, subject: str, body: str = "") -> tuple[bool, str]:
+    def _check_email(self, sender_email: str, subject: str, body: str = "", thread_id: str = "") -> tuple[bool, str]:
         """
         Scoring-based filter that returns (should_keep, detection_reason).
         Emails need a score >= 1 to be kept (at least one positive signal).
@@ -66,6 +66,10 @@ class GmailClient:
             (True, reason) if email should be KEPT
             (False, reason) if email should be BLOCKED
         """
+        from src.junk_filter import JunkFilter
+        if JunkFilter.is_junk(thread_id, sender_email):
+            return (False, "Blocked by user junk memory")
+        
         sender_lower = sender_email.lower()
         subject_lower = subject.lower()
         body_lower = body.lower()
@@ -155,7 +159,8 @@ class GmailClient:
                     should_keep, detection_reason = self._check_email(
                         email_data.get("sender_email", ""),
                         email_data.get("subject", ""),
-                        email_data.get("body", "")
+                        email_data.get("body", ""),
+                        email_data.get("thread_id", "")
                     )
                     if should_keep:
                         email_data["detection_reason"] = detection_reason
@@ -225,6 +230,59 @@ class GmailClient:
         except Exception as e:
             print(f"Error getting message details: {e}")
             return {}
+
+    def get_thread_html(self, thread_id: str) -> str:
+        """Fetch the HTML content of the first message in a thread."""
+        try:
+            thread = self.service.users().threads().get(
+                userId="me", id=thread_id, format="full"
+            ).execute()
+            messages = thread.get("messages", [])
+            if not messages:
+                return "<p>No messages found in thread.</p>"
+            
+            # Get the first message in the thread
+            message = messages[0]
+            payload = message.get("payload", {})
+            
+            html_body = self._extract_html_part(payload)
+            if not html_body:
+                # Fallback to plain text if no HTML part is found
+                text_body, _ = self._extract_body_and_links(payload)
+                html_body = f"<pre style='white-space: pre-wrap; font-family: sans-serif;'>{text_body}</pre>"
+                
+            return html_body
+        except Exception as e:
+            print(f"Error getting thread HTML: {e}")
+            return f"<p>Error loading email: {str(e)}</p>"
+
+    def _extract_html_part(self, payload: dict) -> str:
+        """Recursively search for the text/html MIME part."""
+        def decode_part(part):
+            if 'data' not in part.get('body', {}):
+                return ""
+            data = part['body']['data'].replace('-', '+').replace('_', '/')
+            try:
+                return base64.b64decode(data).decode('utf-8', errors='ignore')
+            except Exception:
+                return ""
+                
+        def walk(payload):
+            if 'parts' in payload:
+                for part in payload['parts']:
+                    yield from walk(part)
+            else:
+                yield payload
+                
+        for part in walk(payload):
+            if part.get('mimeType') == 'text/html':
+                return decode_part(part)
+                
+        # Fallback if the payload itself is text/html
+        if payload.get('mimeType') == 'text/html':
+             return decode_part(payload)
+             
+        return ""
 
     def _extract_body_and_links(self, payload: dict) -> tuple[str, list[str]]:
         """

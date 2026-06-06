@@ -302,10 +302,13 @@ class SheetsClient:
             values = result.get("values", [])
 
             applications = []
-            for row in values:
+            for i, row in enumerate(values):
+                if not row or not row[0].strip():
+                    continue  # Skip entirely empty rows
                 while len(row) < len(SHEET_HEADERS):
                     row.append("")
                 applications.append({
+                    "row_index": i + 2,
                     "company": row[0],
                     "role": row[1],
                     "status": row[2],
@@ -483,6 +486,27 @@ class SheetsClient:
             print(msg)
             return False, msg
 
+    def delete_application(self, row_index: int) -> bool:
+        """Completely delete a row from the spreadsheet."""
+        try:
+            request = {
+                "deleteDimension": {
+                    "range": {
+                        "sheetId": self.sheet_id,
+                        "dimension": "ROWS",
+                        "startIndex": row_index - 1,
+                        "endIndex": row_index
+                    }
+                }
+            }
+            self.service.spreadsheets().batchUpdate(
+                spreadsheetId=self.spreadsheet_id,
+                body={"requests": [request]}
+            ).execute()
+            return True
+        except Exception as e:
+            print(f"Error deleting row {row_index}: {e}")
+            return False
 
     def clear_sheet(self) -> bool:
         """Clear all application data from the sheet (keeps headers)."""
