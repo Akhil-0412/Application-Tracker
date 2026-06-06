@@ -352,7 +352,7 @@
             }
 
             grid.innerHTML = applications.map((app, index) => `
-                <div class="grid-row" data-index="${index}" style="animation-delay: ${index * 30}ms">
+                <div class="grid-row" data-id="${app.row_index}" data-index="${index}" style="animation-delay: ${index * 30}ms">
                     <span class="col-company">
                         <span class="company-avatar">${(app.company || 'U')[0].toUpperCase()}</span>
                         ${escapeHtml(app.company || 'Unknown')}
@@ -371,20 +371,20 @@
 
             // Add click handlers
             document.querySelectorAll('.grid-row').forEach(row => {
-                row.addEventListener('click', () => selectApplication(row.dataset.index));
+                row.addEventListener('click', () => selectApplication(row.dataset.id));
             });
         }
 
         // Select application
-        function selectApplication(index) {
-            const app = allApplications[index];
+        function selectApplication(rowId) {
+            const app = allApplications.find(a => a.row_index == rowId);
             if (!app) return;
 
             selectedApp = app;
 
             // Update selected state
             document.querySelectorAll('.grid-row').forEach(r => r.classList.remove('selected'));
-            document.querySelector(`[data-index="${index}"]`).classList.add('selected');
+            document.querySelector(`[data-id="${rowId}"]`).classList.add('selected');
 
             // Show inspector
             document.getElementById('inspectorContent').style.display = 'block';
@@ -525,13 +525,15 @@
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 e.preventDefault();
                 const rows = document.querySelectorAll('.grid-row');
+                if (rows.length === 0) return;
+                
                 const selected = document.querySelector('.grid-row.selected');
                 let index = selected ? parseInt(selected.dataset.index) : -1;
 
                 if (e.key === 'ArrowDown') index = Math.min(index + 1, rows.length - 1);
                 else index = Math.max(index - 1, 0);
 
-                selectApplication(index);
+                selectApplication(rows[index].dataset.id);
             }
         });
 
