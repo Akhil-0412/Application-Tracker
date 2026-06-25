@@ -38,7 +38,6 @@ class GmailClient:
         """Authenticate with Gmail API using OAuth2."""
         if GOOGLE_OAUTH_TOKEN_JSON:
             import json
-            from google.oauth2.credentials import Credentials
             try:
                 token_data = json.loads(GOOGLE_OAUTH_TOKEN_JSON)
                 self.creds = Credentials.from_authorized_user_info(token_data, ALL_SCOPES)
