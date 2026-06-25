@@ -31,9 +31,9 @@ class TursoConnection:
         if url.startswith("libsql://"):
             url = url.replace("libsql://", "https://")
         
-        # Clean up any accidental copy-paste newlines or spaces from environment variables
-        self.url = url.strip().rstrip("/") + "/v2/pipeline"
-        self.token = auth_token.strip()
+        # Clean up any accidental copy-paste newlines or quotes from environment variables
+        self.url = url.strip().strip('"').strip("'").rstrip("/") + "/v2/pipeline"
+        self.token = auth_token.strip().strip('"').strip("'")
 
     def execute(self, query: str, params=None):
         args = []
