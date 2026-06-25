@@ -27,12 +27,13 @@ class TursoCursor:
         return rows[0] if rows else None
 
 class TursoConnection:
-    def __init__(self, url: str, token: str):
-        # Convert libsql:// to https:// and ensure /v2/pipeline suffix
-        self.url = url.replace("libsql://", "https://")
-        if not self.url.endswith("/v2/pipeline"):
-            self.url = self.url.rstrip("/") + "/v2/pipeline"
-        self.token = token
+    def __init__(self, url: str, auth_token: str):
+        if url.startswith("libsql://"):
+            url = url.replace("libsql://", "https://")
+        
+        # Clean up any accidental copy-paste newlines or spaces from environment variables
+        self.url = url.strip().rstrip("/") + "/v2/pipeline"
+        self.token = auth_token.strip()
 
     def execute(self, query: str, params=None):
         args = []
