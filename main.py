@@ -23,7 +23,7 @@ if sys.platform == "win32":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 from src.gmail_client import GmailClient
-from src.sheets_client import SheetsClient
+from src.db_client import DBClient
 from src.ai_classifier import AIClassifier
 from src.status_tracker import StatusTracker
 from src.thread_store import ThreadStore
@@ -35,7 +35,7 @@ def process_emails(
     gmail: GmailClient,
     classifier: AIClassifier,
     tracker: StatusTracker,
-    sheets: SheetsClient,
+    db: DBClient,
     days: int = 30,
     after_date: Optional[datetime] = None
 ):
@@ -54,7 +54,7 @@ def process_emails(
         return 0
     
     # Load existing applications once for AI context
-    existing_apps = sheets.get_all_applications()
+    existing_apps = db.get_all_applications()
     
     processed = 0
     for email in emails:
@@ -101,7 +101,7 @@ def live_monitor(
     gmail: GmailClient,
     classifier: AIClassifier,
     tracker: StatusTracker,
-    sheets: SheetsClient,
+    db: DBClient,
     interval: int
 ):
     """Run in live monitoring mode."""
@@ -117,7 +117,7 @@ def live_monitor(
             
             if emails:
                 # Load existing applications for AI context
-                existing_apps = sheets.get_all_applications()
+                existing_apps = db.get_all_applications()
                 
                 for email in emails:
                     if not email:
@@ -174,9 +174,9 @@ def main():
     gmail = GmailClient()
     print("   [OK] Gmail connected")
     
-    print("\n[SHEETS] Connecting to Google Sheets...")
-    sheets = SheetsClient()
-    print(f"   [OK] Sheet ready: {sheets.get_spreadsheet_url()}")
+    print("\n[DB] Connecting to SQLite Database...")
+    db = DBClient()
+    print(f"   [OK] DB ready")
     
     print("\n[AI] Initializing AI classifier...")
     classifier = AIClassifier()
@@ -187,9 +187,9 @@ def main():
     
     # Initialize correlation components
     print("\n[CORRELATION] Initializing correlation engine...")
-    thread_store = ThreadStore(sheets)
+    thread_store = ThreadStore(db)
     correlation_engine = CorrelationEngine(
-        sheets_client=sheets,
+        db_client=db,
         thread_store=thread_store,
         ai_classifier=classifier,
     )
@@ -197,19 +197,17 @@ def main():
     
     # Initialize tracker with correlation
     tracker = StatusTracker(
-        sheets_client=sheets,
+        db_client=db,
         correlation_engine=correlation_engine,
         thread_store=thread_store,
     )
     
     if args.live:
-        live_monitor(gmail, classifier, tracker, sheets, args.interval)
+        live_monitor(gmail, classifier, tracker, db, args.interval)
     else:
-        last_run = sheets.get_last_run_date()
-        processed = process_emails(gmail, classifier, tracker, sheets, args.days, after_date=last_run)
-        
-        # Save current time as last run
-        sheets.set_last_run_date(datetime.now())
+        # Instead of a separate last_run_date table, we'll just process the last N days 
+        # (Gmail syncs fast anyway).
+        processed = process_emails(gmail, classifier, tracker, db, args.days)
         
         # Show statistics
         stats = tracker.get_statistics()
@@ -223,11 +221,7 @@ def main():
         
         print(f"\n[DONE] Processed {processed} new/updated applications")
         
-        # Sort sheet by Last Updated (newest first)
-        print("[SORT] Sorting by latest updates...")
-        sheets.sort_by_last_updated()
-        
-        print(f"[LINK] View your tracker: {sheets.get_spreadsheet_url()}")
+        print(f"[LINK] View your tracker by running 'python dashboard/app.py'")
     
     print("\n" + "=" * 50)
 

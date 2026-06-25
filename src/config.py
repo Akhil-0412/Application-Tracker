@@ -26,31 +26,22 @@ else:
 
 # Gmail API scopes
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
-SHEETS_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-ALL_SCOPES = GMAIL_SCOPES + SHEETS_SCOPES
+ALL_SCOPES = GMAIL_SCOPES
 
 # LLM Configuration
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
+# Turso Database Configuration
+TURSO_DATABASE_URL = os.getenv("TURSO_DATABASE_URL", "")
+TURSO_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN", "")
+
 # Monitoring Configuration
 POLLING_INTERVAL = int(os.getenv("POLLING_INTERVAL", "60"))
 
-# Google Sheets Configuration
-SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "")
-SPREADSHEET_NAME = os.getenv("SPREADSHEET_NAME", "Job Application Tracker")
+# Google OAuth Token from Environment (for serverless Vercel)
+GOOGLE_OAUTH_TOKEN_JSON = os.getenv("GOOGLE_OAUTH_TOKEN_JSON")
 
-# Sheet headers
-SHEET_HEADERS = [
-    "Company",
-    "Role",
-    "Status",
-    "Applied Date",
-    "Last Updated",
-    "Email Subject",
-    "Detection Reason",
-    "Action Link",
-    "Thread ID",
-]
+
 
 # Senders to ALWAYS IGNORE (marketing/alerts, never job apps)
 IGNORED_SENDERS = [

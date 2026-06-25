@@ -6,3 +6,4 @@ groq
 openai
 beautifulsoup4
 flask
+requests

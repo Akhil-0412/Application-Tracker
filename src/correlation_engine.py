@@ -10,6 +10,7 @@ Signal 4: Temporal Proximity (tiebreaker — recent applications score higher)
 """
 
 import re
+import difflib
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from typing import Optional
@@ -18,7 +19,7 @@ from typing import Optional
 @dataclass
 class CorrelationMatch:
     """Result of a correlation attempt."""
-    row_index: int
+    db_id: int
     company: str
     role: str
     confidence: float  # 0.0 - 1.0
@@ -29,8 +30,8 @@ class CorrelationMatch:
 class CorrelationEngine:
     """Multi-signal engine for correlating emails to existing applications."""
 
-    def __init__(self, sheets_client, thread_store, ai_classifier=None):
-        self.sheets = sheets_client
+    def __init__(self, db_client, thread_store, ai_classifier=None):
+        self.db = db_client
         self.thread_store = thread_store
         self.ai_classifier = ai_classifier
 
@@ -66,22 +67,96 @@ class CorrelationEngine:
             return match
 
         # Get all existing applications for subsequent signals
-        existing_apps = self.sheets.get_all_applications()
+        existing_apps = self.db.get_all_applications()
         if not existing_apps:
             return None
 
-        # Signal 2: Sender Domain Match
+        # Signal 2: Fuzzy company name scan (check BEFORE domain — more precise)
+        match = self._match_by_fuzzy_company_scan(email, existing_apps)
+        if match:
+            return match
+
+        # Signal 3: Sender Domain Match
         match = self._match_by_domain(
             sender_domain, sender_email, existing_apps, email
         )
         if match:
             return match
 
-        # Signal 3: AI Cross-Reference (only if AI classifier is available)
+        # Signal 4: AI Cross-Reference (only if AI classifier is available)
         match = self._match_by_ai(email, existing_apps)
         if match:
             return match
 
+        return None
+
+    def _match_by_fuzzy_company_scan(
+        self,
+        email: dict,
+        existing_apps: list,
+    ) -> Optional[CorrelationMatch]:
+        """
+        Signal 2b: Scan email content for known company names using fuzzy matching.
+
+        Checks all combinations: subject ↔ company, body ↔ company, sender ↔ company.
+        - Short company names (≤5 chars): exact substring match only
+        - Longer company names: exact substring first, then fuzzy SequenceMatcher ≥ 0.75
+        """
+        subject = email.get("subject", "").lower()
+        body = email.get("body", "")[:3000].lower()
+        sender = email.get("from", "").lower()
+        combined = f"{subject} {body} {sender}"
+
+        best_match = None
+        best_score = 0.0
+
+        for i, app in enumerate(existing_apps):
+            company = app.get("company", "").strip()
+            if not company or company.lower() in ("unknown", "unknown company"):
+                continue
+
+            company_lower = company.lower()
+            db_id = app.get("id")
+
+            # Exact substring check (fast, high confidence)
+            if company_lower in combined:
+                score = 0.95
+                if score > best_score:
+                    best_score = score
+                    best_match = (db_id, app, score, "fuzzy_exact")
+                continue
+
+            # Short names (≤5 chars): exact only — fuzzy would false-positive too much
+            if len(company_lower) <= 5:
+                continue
+
+            # Fuzzy match against subject (cleanest signal)
+            ratio = difflib.SequenceMatcher(None, company_lower, subject).ratio()
+            if ratio >= 0.75 and ratio > best_score:
+                best_score = ratio
+                best_match = (db_id, app, ratio * 0.9, "fuzzy_subject")
+                continue
+
+            # Fuzzy match against sliding window of body tokens
+            body_words = body.split()
+            window_size = len(company_lower.split()) + 2
+            for j in range(max(0, len(body_words) - window_size + 1)):
+                window = " ".join(body_words[j:j + window_size])
+                ratio = difflib.SequenceMatcher(None, company_lower, window).ratio()
+                if ratio >= 0.80 and ratio > best_score:
+                    best_score = ratio
+                    best_match = (db_id, app, ratio * 0.85, "fuzzy_body")
+
+        if best_match:
+            row, app, confidence, signal = best_match
+            return CorrelationMatch(
+                db_id=row,
+                company=app["company"],
+                role=app["role"],
+                confidence=confidence,
+                signal=signal,
+                reasoning=f"Company '{app['company']}' found in email content (score={best_score:.2f})",
+            )
         return None
 
     def _match_by_thread(self, thread_id: str) -> Optional[CorrelationMatch]:
@@ -92,7 +167,7 @@ class CorrelationEngine:
         thread_match = self.thread_store.lookup(thread_id)
         if thread_match:
             return CorrelationMatch(
-                row_index=thread_match["row"],
+                db_id=thread_match["db_id"],
                 company=thread_match["company"],
                 role=thread_match["role"],
                 confidence=1.0,
@@ -127,7 +202,7 @@ class CorrelationEngine:
                 continue
 
             company_lower = company.lower()
-            row = i + 2  # 1-indexed, skip header
+            db_id = app.get("id")
 
             # Check if company name appears in the domain
             # e.g., company="Amazon" matches domain="amazon.com"
@@ -140,7 +215,7 @@ class CorrelationEngine:
                 or domain_normalized.startswith(company_normalized)
                 or sender_domain_lower == company_lower
             ):
-                candidates.append((row, app))
+                candidates.append((db_id, app))
 
         if not candidates:
             return None
@@ -148,7 +223,7 @@ class CorrelationEngine:
         if len(candidates) == 1:
             row, app = candidates[0]
             return CorrelationMatch(
-                row_index=row,
+                db_id=row,
                 company=app["company"],
                 role=app["role"],
                 confidence=0.85,
@@ -162,7 +237,7 @@ class CorrelationEngine:
         if best:
             row, app = best
             return CorrelationMatch(
-                row_index=row,
+                db_id=row,
                 company=app["company"],
                 role=app["role"],
                 confidence=0.7,
@@ -241,7 +316,7 @@ class CorrelationEngine:
                 status = app.get("status", "")
                 if company.lower() not in ("unknown", "unknown company"):
                     apps_summary.append(
-                        f"Row {i+2}: {company} | {role} | {status}"
+                        f"Row {app['id']}: {company} | {role} | {status}"
                     )
 
             if not apps_summary:
@@ -300,7 +375,7 @@ Return ONLY valid JSON:
 
                         if company and role:
                             return CorrelationMatch(
-                                row_index=matched_row,
+                                db_id=matched_row,
                                 company=company,
                                 role=role,
                                 confidence=min(conf, 0.8),  # Cap at 0.8 for AI matches

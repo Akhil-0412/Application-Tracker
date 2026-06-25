@@ -12,6 +12,8 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
+from .utils import build_authorized_http
+
 from .config import (
     ALL_SCOPES,
     TOKEN_PATH,
@@ -20,6 +22,7 @@ from .config import (
     NEGATIVE_SUBJECTS,
     POSITIVE_PHRASES,
     JOB_EMAIL_QUERY,
+    GOOGLE_OAUTH_TOKEN_JSON,
 )
 
 
@@ -33,7 +36,16 @@ class GmailClient:
 
     def _authenticate(self):
         """Authenticate with Gmail API using OAuth2."""
-        if TOKEN_PATH.exists():
+        if GOOGLE_OAUTH_TOKEN_JSON:
+            import json
+            from google.oauth2.credentials import Credentials
+            try:
+                token_data = json.loads(GOOGLE_OAUTH_TOKEN_JSON)
+                self.creds = Credentials.from_authorized_user_info(token_data, ALL_SCOPES)
+            except Exception as e:
+                print(f"Failed to load token from environment: {e}")
+                
+        if not self.creds and TOKEN_PATH.exists():
             self.creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), ALL_SCOPES)
 
         if not self.creds or not self.creds.valid:
@@ -50,12 +62,17 @@ class GmailClient:
                 )
                 self.creds = flow.run_local_server(port=0)
 
-            # Save credentials for future runs
-            TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-            with open(TOKEN_PATH, "w") as token:
-                token.write(self.creds.to_json())
+            # Save credentials for future runs (might fail on read-only file systems)
+            try:
+                TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+                with open(TOKEN_PATH, "w") as token:
+                    token.write(self.creds.to_json())
+            except OSError as e:
+                print(f"Skipping token save on read-only filesystem: {e}")
 
-        self.service = build("gmail", "v1", credentials=self.creds)
+        # Build service with requests-based transport (urllib3 retry handles SSL/network drops)
+        authorized_http = build_authorized_http(self.creds)
+        self.service = build("gmail", "v1", http=authorized_http)
 
     def _check_email(self, sender_email: str, subject: str, body: str = "", thread_id: str = "") -> tuple[bool, str]:
         """

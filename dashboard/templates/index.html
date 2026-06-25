@@ -407,6 +407,46 @@
                 viewEmailBtn.style.display = 'none';
             }
 
+            // Render Timeline
+            const timelineContainer = document.getElementById('statusTimeline');
+            let timelineHtml = '';
+            let timeline = [];
+            
+            try {
+                if (typeof app.timeline === 'string') {
+                    timeline = JSON.parse(app.timeline);
+                } else if (Array.isArray(app.timeline)) {
+                    timeline = app.timeline;
+                }
+            } catch (e) {
+                console.error("Failed to parse timeline:", e);
+            }
+
+            if (timeline && timeline.length > 0) {
+                timelineHtml = timeline.map((event, i) => {
+                    const isLast = i === timeline.length - 1;
+                    const dateObj = new Date(event.date);
+                    const dateStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    return `
+                        <div class="timeline-item ${isLast ? 'active' : ''}">
+                            <span class="timeline-dot"></span>
+                            <span class="timeline-label">${escapeHtml(event.stage)}</span>
+                            <span class="timeline-date">${dateStr}</span>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                // Fallback to basic if no timeline data
+                timelineHtml = `
+                    <div class="timeline-item active">
+                        <span class="timeline-dot"></span>
+                        <span class="timeline-label">${escapeHtml(app.status || 'Applied')}</span>
+                        <span class="timeline-date">${formatDate(app.applied_date)}</span>
+                    </div>
+                `;
+            }
+            timelineContainer.innerHTML = timelineHtml;
+
             // Add entrance animation
             document.getElementById('inspectorContent').classList.add('animate-in');
             setTimeout(() => {

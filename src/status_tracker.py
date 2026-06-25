@@ -7,7 +7,7 @@ to existing tracked applications, preventing orphan 'Unknown' rows.
 from datetime import datetime
 from typing import Optional
 
-from .sheets_client import SheetsClient
+from .db_client import DBClient
 from .ai_classifier import ClassificationResult
 
 
@@ -23,8 +23,8 @@ class StatusTracker:
         "Rejected": 0,  # Rejected is final but lower priority for updates (handled specially)
     }
 
-    def __init__(self, sheets_client: SheetsClient, correlation_engine=None, thread_store=None):
-        self.sheets = sheets_client
+    def __init__(self, db_client: DBClient, correlation_engine=None, thread_store=None):
+        self.db = db_client
         self.correlation_engine = correlation_engine
         self.thread_store = thread_store
         self._cache = {}  # Cache of known applications
@@ -86,7 +86,7 @@ class StatusTracker:
 
                 # Directly update the matched row
                 return self._handle_update(
-                    row_index=match.row_index,
+                    row_index=match.db_id,
                     existing_app={"company": company, "role": role, "status": ""},
                     new_status=status,
                     email_date=email_date,
@@ -100,7 +100,7 @@ class StatusTracker:
 
         # ─── STANDARD LOGIC (unchanged) ──────────────────────────────────
         # Check if this is a new application or update
-        existing = self.sheets.find_application(company, role)
+        existing = self.db.find_application(company, role)
 
         if existing:
             row_index, app = existing
@@ -119,7 +119,11 @@ class StatusTracker:
                 return False, "⚠️ Unmatched rejection (no correlation found, skipped orphan row)"
 
             # Create new application
-            added, reason = self.sheets.add_application(
+            timeline = [{"stage": status, "date": email_date.strftime("%Y-%m-%d")}]
+            import json
+            timeline_str = json.dumps(timeline)
+
+            added, reason = self.db.add_application(
                 company=company,
                 role=role,
                 status=status,
@@ -136,6 +140,8 @@ class StatusTracker:
                     try:
                         row_num = int(reason.split("row ")[1])
                         self.thread_store.register(thread_id, company, role, row_num)
+                        # We also need to add the initial timeline via update since add doesn't support the kwarg yet
+                        self.sheets.update_application(row_num, status, datetime.now().strftime("%Y-%m-%d %H:%M"), timeline=timeline_str)
                     except (IndexError, ValueError):
                         pass
                 return True, "Created new application"
@@ -191,10 +197,70 @@ class StatusTracker:
             updated_role = new_role
 
 
+        # Compute Interview Round updates
+        interview_round = existing_app.get("interview_round", "")
+        if new_status == "Interview":
+            import re
+            
+            # Extract current round (e.g. "1/1" -> current_idx=1, total_rounds=1)
+            # Or if empty string, it's 1/1
+            current_idx = 1
+            total_rounds = 1
+            if interview_round and "/" in interview_round:
+                try:
+                    parts = interview_round.split("/")
+                    current_idx = int(parts[0])
+                    total_rounds = int(parts[1])
+                except ValueError:
+                    pass
+
+            if existing_status == "Interview":
+                # Already in interview. Is this a new round being scheduled?
+                # Look for clues of a new/next round, or assume an update is an increment.
+                # E.g. Subject contains "Round 2", "Final", "Next stage"
+                text = f"{email_subject}".lower()
+                if any(x in text for x in ["round 2", "second", "next", "final", "further"]):
+                    total_rounds += 1
+                    current_idx = total_rounds
+                elif "scheduled" in text or "invite" in text:
+                     # A new invite when we are already in interview = next round
+                     total_rounds += 1
+                     current_idx = total_rounds
+                # Otherwise keep same
+                interview_round = f"{current_idx}/{total_rounds}"
+            else:
+                # First interview!
+                interview_round = "1/1"
+
+        # Compute Timeline updates
+        import json
+        timeline_str = existing_app.get("timeline", "[]")
+        try:
+            timeline = json.loads(timeline_str)
+        except json.JSONDecodeError:
+            timeline = []
+            
+        stage_name = new_status
+        if new_status == "Interview":
+             stage_name = f"Interview R{interview_round}"
+             
+        # Only append to timeline if the status/stage changed
+        append_to_timeline = False
+        if not timeline:
+            append_to_timeline = True
+        elif timeline[-1].get("stage") != stage_name:
+            append_to_timeline = True
+
+        if append_to_timeline:
+            timeline.append({"stage": stage_name, "date": email_date.strftime("%Y-%m-%d")})
+            timeline_str = json.dumps(timeline)
+        else:
+            timeline_str = None # Don't update if nothing changed
+
         # If email is newer, update based on status
         # Rejected and Offer statuses always takes precedence
         if new_status == "Rejected":
-            success = self.sheets.update_application(
+            success = self.db.update_application(
                 row_index=row_index,
                 status="Rejected",
                 last_updated=datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -202,13 +268,14 @@ class StatusTracker:
                 company=updated_company,
                 role=updated_role,
                 action_link=action_link,
-                thread_id=thread_id
+                thread_id=thread_id,
+                timeline=timeline_str
             )
             return success, "Marked as Rejected"
 
 
         if new_status == "Offer":
-            success = self.sheets.update_application(
+            success = self.db.update_application(
                 row_index=row_index,
                 status="Offer",
                 last_updated=datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -216,17 +283,19 @@ class StatusTracker:
                 company=updated_company,
                 role=updated_role,
                 action_link=action_link,
-                thread_id=thread_id
+                thread_id=thread_id,
+                interview_round=interview_round if interview_round else None,
+                timeline=timeline_str
             )
             return success, "Marked as Offer"
 
 
         # Otherwise, only upgrade status
-        if self._should_update_status(existing_status, new_status, action_link) or updated_company or updated_role:
+        if self._should_update_status(existing_status, new_status, action_link) or updated_company or updated_role or (new_status == "Interview" and append_to_timeline):
              # Even if status matches, if we have better metadata, update!
             target_status = new_status if self._should_update_status(existing_status, new_status, action_link) else existing_status
             
-            success = self.sheets.update_application(
+            success = self.db.update_application(
                 row_index=row_index,
                 status=target_status,
                 last_updated=datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -234,12 +303,11 @@ class StatusTracker:
                 company=updated_company,
                 role=updated_role,
                 action_link=action_link,
-                thread_id=thread_id
+                thread_id=thread_id,
+                interview_round=interview_round if new_status == "Interview" else None,
+                timeline=timeline_str
             )
             return success, f"Updated status to {target_status}"
-
-
-
 
         return False, "No status update needed"
 
@@ -263,7 +331,7 @@ class StatusTracker:
 
     def get_statistics(self) -> dict:
         """Get application statistics."""
-        applications = self.sheets.get_all_applications()
+        applications = self.db.get_all_applications()
 
         stats = {
             "total": len(applications),

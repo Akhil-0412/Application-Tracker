@@ -10,32 +10,30 @@ from typing import Optional
 
 
 class ThreadStore:
-    """Maps Gmail threadId → (company, role, sheet_row).
+    """Maps Gmail threadId → (company, role, db_id).
 
-    Uses an in-memory cache backed by a Google Sheet column for persistence.
-    Thread IDs are stored in the "Thread ID" column (column I) of the
-    Applications tab.
+    Uses an in-memory cache backed by the SQLite database for persistence.
     """
 
-    def __init__(self, sheets_client):
-        self.sheets = sheets_client
-        self._cache: dict[str, dict] = {}  # threadId → {company, role, row}
+    def __init__(self, db_client):
+        self.db = db_client
+        self._cache: dict[str, dict] = {}  # threadId → {company, role, db_id}
         self._loaded = False
 
     def _ensure_loaded(self):
-        """Lazy-load all thread mappings from the sheet on first access."""
+        """Lazy-load all thread mappings from the database on first access."""
         if self._loaded:
             return
 
         try:
-            applications = self.sheets.get_all_applications()
-            for i, app in enumerate(applications):
+            applications = self.db.get_all_applications()
+            for app in applications:
                 thread_id = app.get("thread_id", "")
                 if thread_id:
                     self._cache[thread_id] = {
                         "company": app.get("company", ""),
                         "role": app.get("role", ""),
-                        "row": i + 2,  # 1-indexed, skip header
+                        "db_id": app.get("id"),
                     }
         except Exception as e:
             print(f"[ThreadStore] Warning: Could not load thread mappings: {e}")
@@ -46,7 +44,7 @@ class ThreadStore:
         """Look up an application by Gmail thread ID.
 
         Returns:
-            dict with keys {company, role, row} if found, else None.
+            dict with keys {company, role, db_id} if found, else None.
         """
         if not thread_id:
             return None
@@ -54,10 +52,11 @@ class ThreadStore:
         self._ensure_loaded()
         return self._cache.get(thread_id)
 
-    def register(self, thread_id: str, company: str, role: str, row: int):
+    def register(self, thread_id: str, company: str, role: str, db_id: int):
         """Register a thread ID → application mapping.
 
         Call this after successfully processing an Applied email.
+        Note: Database persistence of thread_id is handled by DBClient.
         """
         if not thread_id:
             return
@@ -65,21 +64,10 @@ class ThreadStore:
         self._cache[thread_id] = {
             "company": company,
             "role": role,
-            "row": row,
+            "db_id": db_id,
         }
 
-        # Persist to sheet (Thread ID is column I, index 9)
-        try:
-            self.sheets.service.spreadsheets().values().update(
-                spreadsheetId=self.sheets.spreadsheet_id,
-                range=f"Applications!I{row}",
-                valueInputOption="RAW",
-                body={"values": [[thread_id]]},
-            ).execute()
-        except Exception as e:
-            print(f"[ThreadStore] Warning: Could not persist thread ID for row {row}: {e}")
-
     def invalidate(self):
-        """Force re-load from sheet on next access."""
+        """Force re-load from database on next access."""
         self._cache.clear()
         self._loaded = False

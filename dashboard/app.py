@@ -11,39 +11,44 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from flask import Flask, render_template, jsonify, request
-from src.sheets_client import SheetsClient
+from src.db_client import DBClient
 from src.junk_filter import JunkFilter
 from src.status_tracker import StatusTracker
 from src.thread_store import ThreadStore
 from src.correlation_engine import CorrelationEngine
 from src.ai_classifier import AIClassifier
 
-app = Flask(__name__)
+app = Flask(
+    __name__,
+    template_folder=str(Path(__file__).parent / "templates"),
+    static_folder=str(Path(__file__).parent / "static"),
+    static_url_path="/static"
+)
 
 # Initialize clients once
-sheets = None
+db = None
 tracker = None
 classifier_global = None
 
 
 def get_clients():
     """Lazy initialization of clients."""
-    global sheets, tracker, classifier_global
-    if sheets is None:
-        sheets = SheetsClient()
+    global db, tracker, classifier_global
+    if db is None:
+        db = DBClient()
         classifier_global = AIClassifier()
-        thread_store = ThreadStore(sheets)
+        thread_store = ThreadStore(db)
         correlation_engine = CorrelationEngine(
-            sheets_client=sheets,
+            db_client=db,
             thread_store=thread_store,
             ai_classifier=classifier_global,
         )
         tracker = StatusTracker(
-            sheets_client=sheets,
+            db_client=db,
             correlation_engine=correlation_engine,
             thread_store=thread_store,
         )
-    return sheets, tracker
+    return db, tracker
 
 
 @app.route("/")
@@ -55,8 +60,8 @@ def index():
 @app.route("/api/applications")
 def api_applications():
     """API endpoint for applications data."""
-    sheets, _ = get_clients()
-    applications = sheets.get_all_applications()
+    db, _ = get_clients()
+    applications = db.get_all_applications()
     return jsonify(applications)
 
 
@@ -71,10 +76,15 @@ def api_stats():
 @app.route("/api/email/<thread_id>")
 def api_email_html(thread_id):
     """API endpoint to get the HTML content of an email thread."""
-    from src.gmail_client import GmailClient
-    gmail = GmailClient()
-    html_content = gmail.get_thread_html(thread_id)
-    return html_content
+    try:
+        from src.gmail_client import GmailClient
+        gmail = GmailClient()
+        html_content = gmail.get_thread_html(thread_id)
+        return html_content
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        return f"<h3>Error Initializing Gmail Client</h3><pre>{error_details}</pre>", 500
 
 
 @app.route("/api/applications/<int:row_index>/status", methods=["POST"])
@@ -85,14 +95,16 @@ def api_update_status(row_index):
     if not new_status:
         return jsonify({"error": "Missing status"}), 400
         
-    sheets, _ = get_clients()
-    from datetime import datetime
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    db, _ = get_clients()
+    app_data = request.json
     
-    success, msg = sheets.update_application(
-        row_index=row_index,
+    from datetime import datetime
+    now = datetime.now()
+    
+    success, msg = db.update_application(
+        row_index=row_index, # this is now db_id
         status=new_status,
-        last_updated=now
+        last_updated=now.isoformat(timespec='seconds')
     )
     
     if success:
@@ -114,8 +126,8 @@ def api_junk_application(row_index):
         
     # 2. Completely delete the row from Google Sheet
     try:
-        sheets, _ = get_clients()
-        sheets.delete_application(row_index)
+        db, _ = get_clients()
+        db.delete_application(row_index)
     except Exception as e:
         print(f"Failed to delete junk row {row_index}: {e}")
         
@@ -128,13 +140,13 @@ def api_refresh():
     from src.gmail_client import GmailClient
     from datetime import datetime, timedelta
     
-    sheets, tracker = get_clients()
+    db, tracker = get_clients()
     gmail = GmailClient()
     classifier = classifier_global or AIClassifier()
     
     # Fetch emails from last 24 hours
     emails = gmail.get_messages(days_back=1)
-    existing_apps = sheets.get_all_applications()
+    existing_apps = db.get_all_applications()
     processed = 0
     
     for email in emails:

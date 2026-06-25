@@ -1,13 +1,8 @@
 {
-    "name": "application-tracker",
-    "rewrites": [
-        {
-            "source": "/static/(.*)",
-            "destination": "/dashboard/static/$1"
-        },
-        {
-            "source": "/(.*)",
-            "destination": "/api/index.py"
-        }
-    ]
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index.py"
+    }
+  ]
 }

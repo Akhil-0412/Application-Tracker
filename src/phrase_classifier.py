@@ -135,17 +135,11 @@ class PhraseClassifier:
         )
 
     def _extract_company(self, subject: str, body: str, from_addr: str) -> str:
-        """Extract company name from email."""
-        # Common patterns for company names in body
-        patterns = [
-            r"(?:at|with|from|here at)\s+([A-Za-z][a-zA-Z0-9]+(?:\s+[A-Za-z][a-zA-Z0-9]+)?)",
-            r"([A-Za-z][a-zA-Z0-9]+(?:\s+[A-Za-z][a-zA-Z0-9]+)?)\s+(?:team|talent|careers|recruiting)",
-            r"interest in (?:the\s+)?(?:\w+\s+)?(?:position|role)?\s*(?:at|with)\s+([A-Za-z][a-zA-Z0-9]+)",
-        ]
+        """Extract company name from email, prioritizing sender display name then subject."""
         
         # Extensive blacklist of generic terms often mistaken for company names
-        blacklist = [
-            "the", "a", "an", "our", "your", "hey", "hi", "dear", "us", "me",
+        blacklist = {
+            "the", "a", "an", "our", "your", "hey", "hi", "dear", "us", "me", "we",
             "hire", "hiring", "careers", "recruiting", "talent", "hr", "people",
             "team", "staff", "admin", "support", "info", "contact", "email",
             "application", "position", "role", "job", "vacancy", "opportunity",
@@ -153,47 +147,103 @@ class PhraseClassifier:
             "verify", "security", "code", "password", "login", "account",
             "unknown", "company", "client", "employer", "organization", "firm",
             "received", "confirmed", "submitted", "successful", "unsuccessful",
-            # ATS Platforms and Noise
             "applytojob", "myworkday", "workday", "successfactors", "avature",
             "icims", "jobvite", "smartrecruiters", "breezy", "ashby", "via",
             "e", "fivesurveys", "growthassistant", "targetjobs", "getintoteaching",
-            "verify", "security", "code", "password", "login", "account",
             "welcome", "confirm", "receipt", "order", "invoice", "payment",
-            "subscription", "newsletter", "digest", "update", "alert",
-            "notification", "support", "help", "contact", "info", "admin",
-            "noreply", "no-reply", "mailer", "service", "system", "auto"
-        ]
-
-        for pattern in patterns:
-            match = re.search(pattern, body)
-            if match:
-                company = match.group(1).strip()
-                if company.lower() not in blacklist:
-                    return company
+            "subscription", "noreply", "no-reply", "mailer", "service", "system", "auto",
+            # Common English words the regex picks up
+            "any", "next", "what", "about", "within", "all", "how", "now",
+            "this", "that", "these", "those", "here", "there",
+        }
         
-        # Fallback: Look for "Application to [Company]" in subject
+        # Common words that should never form a company name on their own
+        common_words = {
+            "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+            "of", "with", "by", "from", "up", "about", "into", "over", "after",
+            "is", "are", "was", "were", "be", "been", "have", "has", "had",
+            "do", "does", "did", "will", "would", "could", "should", "may",
+            "might", "can", "shall", "not", "no", "yes", "any", "all",
+            "your", "our", "their", "my", "his", "her", "its", "us", "we",
+            "what", "which", "who", "when", "where", "why", "how", "next",
+            "within", "updates", "update", "application", "status", "team",
+        }
+        
+        def is_valid_company(name: str) -> bool:
+            if not name or len(name) < 2:
+                return False
+            if name.lower() in blacklist:
+                return False
+            # Reject if ALL words are common English words
+            words = name.lower().split()
+            if all(w in common_words for w in words):
+                return False
+            return True
+        
+        # ─── 1. Sender Display Name (most reliable) ──────────────────────────────
+        sender_match = re.match(r'^(.+?)\s*<', from_addr)
+        if sender_match:
+            display_name = sender_match.group(1).strip()
+            if display_name and '@' not in display_name:
+                # Strip ATS/platform suffixes
+                suffixes = [
+                    r'\s*-\s*Workday$', r'\s*-\s*Greenhouse$', r'\s*-\s*Lever$',
+                    r'\s*Hiring\s*Team$', r'\s*Careers?$', r'\s*Talent\s*(Acquisition)?$',
+                    r'\s*Recruiting$', r'\s*HR$', r'\s*People$', r'\s*Jobs?$',
+                    r'\s*Notifications?$', r'\s*via\s+\w+$',
+                ]
+                for suffix in suffixes:
+                    display_name = re.sub(suffix, '', display_name, flags=re.IGNORECASE).strip()
+                generic_names = {"no-reply", "noreply", "notifications", "mailer", "support", "info", "admin"}
+                if display_name.lower() not in generic_names and is_valid_company(display_name):
+                    return display_name
+        
+        # ─── 2. Subject Line (rich, structured — check BEFORE body) ──────────────
+        # These patterns directly address the errors.md failures:
         subject_patterns = [
-            r"application\s+(?:to|for)\s+([A-Za-z][a-zA-Z0-9]+(?:\s+[A-Za-z][a-zA-Z0-9]+)?)",
-            r"your\s+(?:job\s+)?application\s+(?:at|with|to)\s+([A-Za-z][a-zA-Z0-9]+(?:\s+[A-Za-z][a-zA-Z0-9]+)?)",
+            # "Visa - Application Update" / "RAC - Your application for..."
+            r'^([A-Z][A-Za-z0-9\s&\'\.\-]{1,30}?)\s*[-–]\s*(?:Application|Interview|Your|An update|Thanks|Thank)',
+            # "Thank you for your application | Lendable"
+            r'\|\s*([A-Z][A-Za-z0-9\s&\'\.\-]{2,30}?)\s*$',
+            # "Thank you for your application to Flatiron Health!" / "applying to Captur"
+            r'(?:application to|applying to|interest in)\s+([A-Z][A-Za-z0-9\s&\'\.\-]{2,40}?)(?:\s*[!,.\n]|$)',
+            # "An update on your bet365 application" / "An update on your MUBI application"
+            r'(?:your|the)\s+([A-Z][A-Za-z0-9&\'\.\-]{2,30}?)\s+application\b',
+            # "Allica Bank - Thanks for your application!"
+            r'^([A-Z][A-Za-z0-9\s&\'\.\-]{2,30}?)\s*[-–]\s+(?:Thanks|Thank you|We)',
+            # "application to / for CompanyName"
+            r'application\s+(?:to|for)\s+([A-Z][A-Za-z0-9\s&\'\.\-]{2,30}?)(?:\s*[!,.\n]|$)',
         ]
         for pattern in subject_patterns:
             match = re.search(pattern, subject, re.IGNORECASE)
             if match:
-                company = match.group(1).strip()
-                if company.lower() not in blacklist:
+                company = match.group(1).strip().rstrip('!')
+                if is_valid_company(company):
                     return company
 
-        # Try from email domain
+        # ─── 3. Body patterns (uppercased proper-noun check) ──────────────────────
+        body_patterns = [
+            r'(?:joining|interest in|here at|welcome to)\s+([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+){0,3})',
+            r'(?:at|with)\s+([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+){0,2})(?:\s*[,.]|\s+we\b)',
+            r'([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+){0,2})\s+(?:team|talent|careers|recruiting)',
+        ]
+        for pattern in body_patterns:
+            match = re.search(pattern, body)
+            if match:
+                company = match.group(1).strip()
+                if is_valid_company(company):
+                    return company
+        
+        # ─── 4. Email domain fallback ──────────────────────────────────────────────
         match = re.search(r'@([^.]+)\.', from_addr)
         if match:
             domain = match.group(1)
-            # Filter out generic email providers and platforms
-            ignored = ["gmail", "yahoo", "outlook", "hotmail", "mail", "no-reply", "noreply", 
+            ignored = {"gmail", "yahoo", "outlook", "hotmail", "mail", "no-reply", "noreply", 
                        "workday", "greenhouse", "lever", "icims", "taleo", "ripplehire",
                        "smartrecruiters", "jobvite", "applytojob", "breezy", "ashby", "myworkday", 
                        "via", "successfactors", "avature", "hire", "recruiting", "careers", "jobs",
                        "e", "fivesurveys", "growthassistant", "targetjobs", "getintoteaching",
-                       "oscar-tech", "involved-solutions"]
+                       "oscar-tech", "involved-solutions", "deel"}
             if domain.lower() not in ignored:
                 return domain.title()
         
