@@ -28,6 +28,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           
+      - name: Debug Secrets
+        env:
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: |
+          echo "Token Length: ${#TURSO_AUTH_TOKEN}"
+          echo "Token starts with: ${TURSO_AUTH_TOKEN:0:5}"
+          echo "Token ends with: ${TURSO_AUTH_TOKEN: -5}"
+          
       - name: Run Application Tracker Sync
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
